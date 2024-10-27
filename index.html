@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>导航页</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+        }
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 20px;
+            padding: 20px;
+        }
+        .card {
+            background-color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            overflow: hidden;
+            width: 200px;
+            text-align: center;
+            transition: transform 0.2s;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        .card a {
+            display: block;
+            padding: 20px;
+            color: #333;
+            text-decoration: none;
+        }
+        .card a:hover {
+            color: #007BFF;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card"><a href="https://nginx.ieoc.top" target="_blank">Nginx</a></div>
+        <div class="card"><a href="https://1pannel.ieoc.top" target="_blank">1Pannel</a></div>
+        <div class="card"><a href="https://files.ieoc.top" target="_blank">Files</a></div>
+        <div class="card"><a href="https://v2ray.ieoc.top" target="_blank">V2Ray</a></div>
+        <div class="card"><a href="https://cassos.ieoc.top" target="_blank">Cassos</a></div>
+        <div class="card"><a href="https://163.ieoc.top" target="_blank">163</a></div>
+        <div class="card"><a href="https://jenkins.ieoc.top" target="_blank">Jenkins</a></div>
+        <div class="card"><a href="https://emby.ieoc.top" target="_blank">Emby</a></div>
+        <div class="card"><a href="https://qb.ieoc.top" target="_blank">QB</a></div>
+        <div class="card"><a href="https://alist.ieoc.top" target="_blank">Alist</a></div>
+        <div class="card"><a href="https://halo.ieoc.top" target="_blank">Halo</a></div>
+    </div>
+</body>
+</html>
