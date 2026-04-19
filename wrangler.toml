@@ -1,0 +1,7 @@
+name = "daohang"
+compatibility_date = "2025-01-01"
+pages_build_output_dir = "."
+
+kv_namespaces = [
+  { binding = "NAV_CONFIG", id = "48f2880f531b4cb9b712782a6e05fc26" }
+]
