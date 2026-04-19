@@ -546,22 +546,28 @@ function showToast(msg) {
 
 // === API ===
 async function loadConfig() {
+  // Try localStorage first (most recent)
+  const saved = localStorage.getItem("nav_config");
+  if (saved) {
+    try { config = JSON.parse(saved); return; } catch {}
+  }
+  // Fallback to API
   try {
     const res = await fetch("/api/config");
     config = await res.json();
-  } catch (e) {
-    // Fallback: use default if API unavailable
+    localStorage.setItem("nav_config", JSON.stringify(config));
+  } catch {
     config = getDefaultConfig();
   }
 }
 
 async function saveConfig() {
+  // Always save to localStorage first
+  localStorage.setItem("nav_config", JSON.stringify(config));
+  // Also sync to KV
   try {
     await fetch("/api/config", { method: "POST", body: JSON.stringify(config), headers: { "Content-Type": "application/json" } });
-  } catch (e) {
-    // Fallback: save to localStorage
-    localStorage.setItem("nav_config", JSON.stringify(config));
-  }
+  } catch {}
 }
 
 function getDefaultConfig() {
@@ -829,11 +835,6 @@ document.querySelectorAll(".modal-overlay").forEach(overlay => {
 
 // Load & render
 loadConfig().then(() => {
-  // Try localStorage fallback
-  const saved = localStorage.getItem("nav_config");
-  if (saved) {
-    try { config = { ...config, ...JSON.parse(saved) }; } catch {}
-  }
   applyBackground();
   renderGrid();
 });
