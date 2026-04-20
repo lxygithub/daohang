@@ -17,6 +17,8 @@ const DEFAULT_CONFIG = {
   background: { type: "color", value: "#181818" },
 };
 
+const ADMIN_PASSWORD = "mewlxy";
+
 export async function onRequest(context) {
   const { request, env } = context;
   const { NAV_CONFIG } = env;
@@ -34,7 +36,23 @@ export async function onRequest(context) {
   if (request.method === "POST") {
     try {
       const body = await request.json();
-      await NAV_CONFIG.put("nav_config", JSON.stringify(body));
+
+      // Password verification endpoint
+      if (body.action === "verify") {
+        if (body.password === ADMIN_PASSWORD) {
+          return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+        }
+        return new Response(JSON.stringify({ ok: false, error: "密码错误" }), { status: 403, headers: { "Content-Type": "application/json" } });
+      }
+
+      // Save config - require password
+      if (body.password !== ADMIN_PASSWORD) {
+        return new Response(JSON.stringify({ ok: false, error: "密码错误" }), { status: 403, headers: { "Content-Type": "application/json" } });
+      }
+
+      // Strip action/password before saving
+      const { action, password, ...configData } = body;
+      await NAV_CONFIG.put("nav_config", JSON.stringify(configData));
       return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
     } catch (e) {
       return new Response(JSON.stringify({ error: e.message }), { status: 400, headers: { "Content-Type": "application/json" } });
