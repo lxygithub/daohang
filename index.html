@@ -641,25 +641,28 @@ document.addEventListener("keydown", (e) => {
 
 // === API ===
 async function loadConfig() {
-  // Try localStorage first (most recent)
-  const saved = localStorage.getItem("nav_config");
-  if (saved) {
-    try { config = JSON.parse(saved); return; } catch {}
-  }
-  // Fallback to API
+  // Try D1 API first
   try {
     const res = await fetch("/api/config");
     config = await res.json();
     localStorage.setItem("nav_config", JSON.stringify(config));
-  } catch {
-    config = getDefaultConfig();
+    return;
+  } catch {}
+
+  // Fallback to localStorage
+  const saved = localStorage.getItem("nav_config");
+  if (saved) {
+    try { config = JSON.parse(saved); return; } catch {}
   }
+
+  // Last resort: default config
+  config = getDefaultConfig();
 }
 
 async function saveConfig() {
   // Always save to localStorage first
   localStorage.setItem("nav_config", JSON.stringify(config));
-  // Also sync to KV with password
+  // Also sync to D1 with password
   try {
     const body = Object.assign({}, config, { password: "mewlxy" });
     await fetch("/api/config", { method: "POST", body: JSON.stringify(body), headers: { "Content-Type": "application/json" } });
