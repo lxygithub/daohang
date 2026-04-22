@@ -1,3 +1,5 @@
+const ADMIN_PASSWORD = "mewlxy";
+
 const DEFAULT_CONFIG = {
   services: [
     { id: "nginx", name: "Nginx", url: "https://nginx.ieoc.top", iconType: "preset", icon: "server" },
@@ -17,20 +19,21 @@ const DEFAULT_CONFIG = {
   background: { type: "color", value: "#181818" },
 };
 
-const ADMIN_PASSWORD = "mewlxy";
-
 export async function onRequest(context) {
   const { request, env } = context;
-  const { NAV_CONFIG } = env;
+  const { DB } = env;
 
   if (request.method === "GET") {
-    const value = await NAV_CONFIG.get("nav_config");
-    if (value) {
-      return new Response(value, { headers: { "Content-Type": "application/json" } });
+    try {
+      const result = await DB.prepare("SELECT config_json FROM nav_config WHERE id = 1").first();
+      if (result) {
+        return new Response(result.config_json, { headers: { "Content-Type": "application/json" } });
+      }
+      // Return default config
+      return new Response(JSON.stringify(DEFAULT_CONFIG), { headers: { "Content-Type": "application/json" } });
+    } catch (e) {
+      return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { "Content-Type": "application/json" } });
     }
-    // Return default config and initialize KV
-    await NAV_CONFIG.put("nav_config", JSON.stringify(DEFAULT_CONFIG));
-    return new Response(JSON.stringify(DEFAULT_CONFIG), { headers: { "Content-Type": "application/json" } });
   }
 
   if (request.method === "POST") {
@@ -52,7 +55,11 @@ export async function onRequest(context) {
 
       // Strip action/password before saving
       const { action, password, ...configData } = body;
-      await NAV_CONFIG.put("nav_config", JSON.stringify(configData));
+
+      await DB.prepare(
+        "INSERT OR REPLACE INTO nav_config (id, config_json, updated_at) VALUES (1, ?, CURRENT_TIMESTAMP)"
+      ).bind(JSON.stringify(configData)).run();
+
       return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
     } catch (e) {
       return new Response(JSON.stringify({ error: e.message }), { status: 400, headers: { "Content-Type": "application/json" } });
