@@ -5,5 +5,5 @@ pages_build_output_dir = "."
 [[d1_databases]]
 binding = "DB"
 database_name = "daohang"
-database_id = "YOUR_DATABASE_ID"
+database_id = "cdcd3457-9c73-4cba-8daa-f97531949ab5"
 migrations_dir = "d1"
