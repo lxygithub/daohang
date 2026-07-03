@@ -96,6 +96,7 @@ onMounted(async () => {
   updateClock()
   clockTimer = setInterval(updateClock, 1000)
   await loadConfig()
+  console.log('[daohang] Config loaded:', config.value)
   applyBackground()
 })
 
@@ -133,9 +134,11 @@ onUnmounted(() => {
   </header>
 
   <main class="main-content">
+    <div v-if="loading" style="text-align:center;padding:60px 0;color:#666">加载中...</div>
+    <div v-else-if="!config" style="text-align:center;padding:60px 0;color:#666">加载失败</div>
     <NavGrid
-      v-if="config"
-      :services="config.services"
+      v-else
+      :services="config.services || []"
       :filter="searchQuery"
       @reordered="saveConfig"
     />

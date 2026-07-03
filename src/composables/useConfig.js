@@ -27,19 +27,23 @@ const loading = ref(true)
 export function useConfig() {
   async function loadConfig() {
     loading.value = true
+    const fallback = getDefaultConfig()
     try {
       const res = await fetch('/api/config')
-      const data = await res.json()
-      // Ensure config has required fields
-      if (data && Array.isArray(data.services)) {
-        config.value = data
-      } else {
-        console.warn('Invalid config from API, using default')
-        config.value = getDefaultConfig()
+      console.log('[daohang] API response status:', res.status)
+      if (!res.ok) {
+        console.error('[daohang] API error, using default config')
+        config.value = fallback
+        return
       }
+      const text = await res.text()
+      console.log('[daohang] API raw response:', text.substring(0, 200))
+      const data = JSON.parse(text)
+      console.log('[daohang] Parsed config, services count:', data?.services?.length)
+      config.value = data
     } catch (e) {
-      console.error('Failed to load config from D1:', e)
-      config.value = getDefaultConfig()
+      console.error('[daohang] Failed to load config:', e)
+      config.value = fallback
     } finally {
       loading.value = false
     }
@@ -55,7 +59,7 @@ export function useConfig() {
         headers: { 'Content-Type': 'application/json' },
       })
     } catch (e) {
-      console.error('Failed to save config to D1:', e)
+      console.error('Failed to save config:', e)
     }
   }
 
