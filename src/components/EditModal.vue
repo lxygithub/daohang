@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, inject } from 'vue'
+import { ref, watch, computed, inject } from 'vue'
 import { ICONS } from '../data/icons'
 
 const props = defineProps({
@@ -17,16 +17,19 @@ const url = ref('')
 const iconUrl = ref('')
 const selectedIcon = ref('server')
 
-const isEditing = props.editIndex >= 0
+const isEditing = computed(() => props.editIndex >= 0)
+const modalTitle = computed(() => isEditing.value ? '编辑项目' : '新增项目')
 
 watch(() => props.visible, (val) => {
   if (!val) return
   if (props.editIndex >= 0) {
     const svc = props.services[props.editIndex]
-    name.value = svc.name
-    url.value = svc.url
-    iconUrl.value = svc.iconType === 'url' ? svc.icon : ''
-    selectedIcon.value = svc.iconType === 'preset' ? svc.icon : 'server'
+    if (svc) {
+      name.value = svc.name
+      url.value = svc.url
+      iconUrl.value = svc.iconType === 'url' ? svc.icon : ''
+      selectedIcon.value = svc.iconType === 'preset' ? svc.icon : 'server'
+    }
   } else {
     name.value = ''
     url.value = ''
@@ -86,7 +89,7 @@ function handleOverlayClick(e) {
 <template>
   <div class="modal-overlay" :class="{ active: visible }" @click="handleOverlayClick">
     <div class="modal">
-      <h2>{{ editIndex >= 0 ? '编辑项目' : '新增项目' }}</h2>
+      <h2>{{ modalTitle }}</h2>
       <div class="form-group">
         <label>名称</label>
         <input type="text" class="form-input" v-model="name" placeholder="服务名称">

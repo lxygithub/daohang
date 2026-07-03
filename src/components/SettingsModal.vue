@@ -32,14 +32,17 @@ function selectPreset(bg) {
 function close() {
   const custom = customValue.value.trim()
   if (custom) {
+    // Must verify BEFORE closing — password modal needs to appear over settings modal
     ensureVerified(() => {
       document.body.style.background = custom
       props.background.type = 'color'
       props.background.value = custom
       emit('saved')
+      emit('close')
     })
+  } else {
+    emit('close')
   }
-  emit('close')
 }
 
 function handleOverlayClick(e) {

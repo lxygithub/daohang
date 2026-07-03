@@ -29,7 +29,14 @@ export function useConfig() {
     loading.value = true
     try {
       const res = await fetch('/api/config')
-      config.value = await res.json()
+      const data = await res.json()
+      // Ensure config has required fields
+      if (data && Array.isArray(data.services)) {
+        config.value = data
+      } else {
+        console.warn('Invalid config from API, using default')
+        config.value = getDefaultConfig()
+      }
     } catch (e) {
       console.error('Failed to load config from D1:', e)
       config.value = getDefaultConfig()
