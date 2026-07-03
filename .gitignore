@@ -1,3 +1,4 @@
 .aionrs/
 node_modules/
 .wrangler/
+dist/
