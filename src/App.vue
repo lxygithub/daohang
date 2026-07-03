@@ -136,12 +136,14 @@ onUnmounted(() => {
   <main class="main-content">
     <div v-if="loading" style="text-align:center;padding:60px 0;color:#666">加载中...</div>
     <div v-else-if="!config" style="text-align:center;padding:60px 0;color:#666">加载失败</div>
-    <NavGrid
-      v-else
-      :services="config.services || []"
-      :filter="searchQuery"
-      @reordered="saveConfig"
-    />
+    <template v-else>
+      <div style="color:#666;font-size:12px;margin-bottom:8px">DEBUG: services={{ config.services?.length }}, filter="{{ searchQuery }}"</div>
+      <NavGrid
+        :services="config.services || []"
+        :filter="searchQuery"
+        @reordered="saveConfig"
+      />
+    </template>
   </main>
 
   <EditModal

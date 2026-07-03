@@ -56,6 +56,7 @@ onUnmounted(() => {
 </script>
 
 <template>
+  <div style="color:#666;font-size:12px;margin-bottom:8px">DEBUG NavGrid: filtered={{ filteredServices.length }}</div>
   <div class="card-grid">
     <NavCard
       v-for="svc in filteredServices"
