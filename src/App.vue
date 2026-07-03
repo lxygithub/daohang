@@ -96,7 +96,6 @@ onMounted(async () => {
   updateClock()
   clockTimer = setInterval(updateClock, 1000)
   await loadConfig()
-  console.log('[daohang] Config loaded:', config.value)
   applyBackground()
 })
 
@@ -117,6 +116,7 @@ onUnmounted(() => {
         class="search-input"
         v-model="searchQuery"
         placeholder="搜索..."
+        autocomplete="off"
       >
       <button class="btn" title="新增" @click="openAddModal">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
@@ -136,14 +136,12 @@ onUnmounted(() => {
   <main class="main-content">
     <div v-if="loading" style="text-align:center;padding:60px 0;color:#666">加载中...</div>
     <div v-else-if="!config" style="text-align:center;padding:60px 0;color:#666">加载失败</div>
-    <template v-else>
-      <div style="color:#666;font-size:12px;margin-bottom:8px">DEBUG: services={{ config.services?.length }}, filter="{{ searchQuery }}"</div>
-      <NavGrid
-        :services="config.services || []"
-        :filter="searchQuery"
-        @reordered="saveConfig"
-      />
-    </template>
+    <NavGrid
+      v-else
+      :services="config.services || []"
+      :filter="searchQuery"
+      @reordered="saveConfig"
+    />
   </main>
 
   <EditModal

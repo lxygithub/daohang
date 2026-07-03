@@ -30,16 +30,13 @@ export function useConfig() {
     const fallback = getDefaultConfig()
     try {
       const res = await fetch('/api/config')
-      console.log('[daohang] API response status:', res.status)
       if (!res.ok) {
         console.error('[daohang] API error, using default config')
         config.value = fallback
         return
       }
       const text = await res.text()
-      console.log('[daohang] API raw response:', text.substring(0, 200))
       const data = JSON.parse(text)
-      console.log('[daohang] Parsed config, services count:', data?.services?.length)
       config.value = data
     } catch (e) {
       console.error('[daohang] Failed to load config:', e)
