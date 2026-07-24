@@ -7,9 +7,8 @@ import EditModal from './components/EditModal.vue'
 import SettingsModal from './components/SettingsModal.vue'
 import PasswordModal from './components/PasswordModal.vue'
 import Toast from './components/Toast.vue'
-import { version } from '../package.json'
 
-const commitHash = __COMMIT_HASH__
+const buildTime = __BUILD_TIME__
 
 const { config, loading, loadConfig, saveConfig } = useConfig()
 const { message: toastMessage, visible: toastVisible, showToast } = useToast()
@@ -176,5 +175,5 @@ onUnmounted(() => {
 
   <Toast :message="toastMessage" :visible="toastVisible" />
 
-  <footer class="version-bar">{{ version }}+{{ commitHash }}</footer>
+  <footer class="version-bar">Build：{{ buildTime }}</footer>
 </template>

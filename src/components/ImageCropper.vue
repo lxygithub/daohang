@@ -39,18 +39,13 @@ function onImgLoad() {
     scalable: false,
     rotatable: false,
     toggleDragModeOnDblclick: false,
-    minCropBoxWidth: 300,
-    minCropBoxHeight: 300,
     initialCover: 'cover',
     background: false,
-    responsive: false,
   })
 }
 
 function confirm() {
   if (!cropper) return
-
-  // Force crop to fill the 300×300 visible area
   const canvas = cropper.getCroppedCanvas({
     width: OUTPUT_SIZE,
     height: OUTPUT_SIZE,
@@ -58,12 +53,8 @@ function confirm() {
     imageSmoothingEnabled: true,
     imageSmoothingQuality: 'high',
   })
-
-  canvas.toBlob(blob => {
-    const reader = new FileReader()
-    reader.onload = () => emit('crop', reader.result)
-    reader.readAsDataURL(blob)
-  }, 'image/png')
+  if (!canvas) return
+  emit('crop', canvas.toDataURL('image/png'))
 }
 
 function handleOverlayClick(e) {
