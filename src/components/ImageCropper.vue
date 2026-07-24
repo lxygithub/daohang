@@ -1,7 +1,6 @@
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
 import Cropper from 'cropperjs'
-import 'cropperjs/dist/cropper.css'
 
 const props = defineProps({
   file: { type: File, default: null },
