@@ -253,6 +253,35 @@ a { color: inherit; text-decoration: none; }
   margin-bottom: 6px;
 }
 
+.input-row {
+  display: flex;
+  gap: 8px;
+}
+.input-row .form-input { flex: 1; }
+
+.fetch-btn {
+  flex-shrink: 0;
+  padding: 8px 14px;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.05);
+  color: #bbb;
+  cursor: pointer;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  transition: background 0.2s, border-color 0.2s;
+}
+.fetch-btn:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.25); }
+.fetch-btn.loading { opacity: 0.6; pointer-events: none; }
+
+.favicon-preview {
+  width: 28px;
+  height: 28px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
 .form-input {
   width: 100%;
   padding: 10px 14px;

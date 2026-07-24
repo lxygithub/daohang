@@ -16,12 +16,15 @@ const name = ref('')
 const url = ref('')
 const iconUrl = ref('')
 const selectedIcon = ref('server')
+const faviconPreview = ref('')
+const fetchingFavicon = ref(false)
 
 const isEditing = computed(() => props.editIndex >= 0)
 const modalTitle = computed(() => isEditing.value ? '编辑项目' : '新增项目')
 
 watch(() => props.visible, (val) => {
   if (!val) return
+  faviconPreview.value = ''
   if (props.editIndex >= 0) {
     const svc = props.services[props.editIndex]
     if (svc) {
@@ -41,6 +44,50 @@ watch(() => props.visible, (val) => {
 function selectIcon(key) {
   selectedIcon.value = key
   iconUrl.value = ''
+}
+
+function parseDomain(u) {
+  try {
+    const d = new URL(u.includes('://') ? u : 'https://' + u)
+    return d.hostname
+  } catch { return '' }
+}
+
+async function fetchFavicon() {
+  const u = url.value.trim()
+  if (!u) { showToast('请先填写链接'); return }
+  const domain = parseDomain(u)
+  if (!domain) { showToast('链接格式不正确'); return }
+
+  fetchingFavicon.value = true
+  // Try Google S2 favicon service — works for all domains, no CORS issues
+  const src = `https://www.google.com/s2/favicons?domain=${domain}&sz=64`
+
+  // Preload to verify
+  const img = new Image()
+  img.onload = () => {
+    faviconPreview.value = src
+    iconUrl.value = src
+    selectedIcon.value = ''
+    fetchingFavicon.value = false
+  }
+  img.onerror = () => {
+    // Fallback: try direct favicon.ico
+    const fallback = `https://${domain}/favicon.ico`
+    const img2 = new Image()
+    img2.onload = () => {
+      faviconPreview.value = fallback
+      iconUrl.value = fallback
+      selectedIcon.value = ''
+      fetchingFavicon.value = false
+    }
+    img2.onerror = () => {
+      showToast('未找到图标')
+      fetchingFavicon.value = false
+    }
+    img2.src = fallback
+  }
+  img.src = src
 }
 
 function save() {
@@ -96,7 +143,15 @@ function handleOverlayClick(e) {
       </div>
       <div class="form-group">
         <label>链接</label>
-        <input type="text" class="form-input" v-model="url" placeholder="https://...">
+        <div class="input-row">
+          <input type="text" class="form-input" v-model="url" placeholder="https://...">
+          <button
+            class="btn-text fetch-btn"
+            :class="{ loading: fetchingFavicon }"
+            @click="fetchFavicon"
+            :disabled="fetchingFavicon"
+          >{{ fetchingFavicon ? '获取中…' : '图标' }}</button>
+        </div>
       </div>
       <div class="form-group">
         <label>图标</label>
@@ -114,8 +169,9 @@ function handleOverlayClick(e) {
             </div>
           </div>
         </div>
-        <div style="margin-top:10px">
-          <input type="text" class="form-input" v-model="iconUrl" placeholder="或输入图片URL：https://...">
+        <div style="margin-top:10px;display:flex;gap:10px;align-items:center">
+          <input type="text" class="form-input" v-model="iconUrl" placeholder="或输入图片URL：https://..." style="flex:1">
+          <img v-if="faviconPreview" :src="faviconPreview" class="favicon-preview" @error="faviconPreview = ''">
         </div>
       </div>
       <div class="modal-footer">
