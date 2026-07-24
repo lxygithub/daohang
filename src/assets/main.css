@@ -395,6 +395,15 @@ a { color: inherit; text-decoration: none; }
 }
 .btn-text.primary:hover { background: #2563eb; }
 
+/* Version bar */
+.version-bar {
+  text-align: center;
+  padding: 12px 0 20px;
+  font-size: 0.75rem;
+  color: #444;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Settings modal - background presets */
 .bg-presets {
   display: grid;
