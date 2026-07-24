@@ -12,16 +12,10 @@ const OUTPUT_SIZE = 128
 const imgRef = ref(null)
 const imageUrl = ref('')
 let cropper = null
-let loadedImage = null  // for manual canvas draw
 
 onMounted(() => {
   if (props.file) {
-    const url = URL.createObjectURL(props.file)
-    imageUrl.value = url
-    // Preload for manual draw in case getCroppedCanvas fails
-    const img = new Image()
-    img.onload = () => { loadedImage = img }
-    img.src = url
+    imageUrl.value = URL.createObjectURL(props.file)
   }
 })
 
@@ -52,23 +46,24 @@ function onImgLoad() {
 
 function confirm() {
   const data = cropper?.getData()
-  if (!data) return
+  if (!data || !imageUrl.value) return
 
-  const src = loadedImage
-  if (!src) return
-
-  const canvas = document.createElement('canvas')
-  canvas.width = OUTPUT_SIZE
-  canvas.height = OUTPUT_SIZE
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return
-
-  ctx.drawImage(
-    src,
-    data.x, data.y, data.width, data.height,
-    0, 0, OUTPUT_SIZE, OUTPUT_SIZE,
-  )
-  emit('crop', canvas.toDataURL('image/png'))
+  // Create fresh Image from blob URL to avoid preload race
+  const img = new Image()
+  img.onload = () => {
+    const canvas = document.createElement('canvas')
+    canvas.width = OUTPUT_SIZE
+    canvas.height = OUTPUT_SIZE
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(
+      img,
+      data.x, data.y, data.width, data.height,
+      0, 0, OUTPUT_SIZE, OUTPUT_SIZE,
+    )
+    emit('crop', canvas.toDataURL('image/png'))
+  }
+  img.onerror = () => { /* silent — do nothing */ }
+  img.src = imageUrl.value
 }
 
 function handleOverlayClick(e) {
