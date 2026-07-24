@@ -29,19 +29,23 @@ function onImgLoad() {
   const img = imgRef.value
   if (!img) return
 
-  cropper = new Cropper(img, {
-    aspectRatio: 1,
-    viewMode: 1,
-    dragMode: 'move',
-    cropBoxMovable: false,
-    cropBoxResizable: false,
-    zoomable: true,
-    scalable: false,
-    rotatable: false,
-    toggleDragModeOnDblclick: false,
-    initialCover: 'cover',
-    background: false,
-  })
+  // cropperjs v2 ignores all v1-style options (aspectRatio, viewMode, etc.)
+  // Only container/template matter. Configure selection directly after init.
+  cropper = new Cropper(img)
+
+  // Wait for Web Components to upgrade & render
+  nextTick(() => nextTick(() => {
+    const sel = cropper?.getCropperSelection()
+    const canvas = cropper?.getCropperCanvas()
+    if (!sel || !canvas) return
+
+    const s = Math.min(canvas.clientWidth, canvas.clientHeight) * 0.85
+    sel.aspectRatio = 1
+    sel.width = s
+    sel.height = s
+    sel.resizable = false
+    sel.$center()
+  }))
 }
 
 function confirm() {
