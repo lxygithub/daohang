@@ -60,20 +60,20 @@ async function fetchFavicon() {
   if (!domain) { showToast('链接格式不正确'); return }
 
   fetchingFavicon.value = true
-  // Try Google S2 favicon service — works for all domains, no CORS issues
-  const src = `https://www.google.com/s2/favicons?domain=${domain}&sz=64`
+  const protocol = u.includes('http://') ? 'http://' : 'https://'
 
-  // Preload to verify
+  // Try direct favicon.ico first (actual site icon)
+  const direct = `${protocol}${domain}/favicon.ico`
   const img = new Image()
   img.onload = () => {
-    faviconPreview.value = src
-    iconUrl.value = src
+    faviconPreview.value = direct
+    iconUrl.value = direct
     selectedIcon.value = ''
     fetchingFavicon.value = false
   }
   img.onerror = () => {
-    // Fallback: try direct favicon.ico
-    const fallback = `https://${domain}/favicon.ico`
+    // Fallback: Google S2 for public domains
+    const fallback = `https://www.google.com/s2/favicons?domain=${domain}&sz=64`
     const img2 = new Image()
     img2.onload = () => {
       faviconPreview.value = fallback
@@ -87,7 +87,7 @@ async function fetchFavicon() {
     }
     img2.src = fallback
   }
-  img.src = src
+  img.src = direct
 }
 
 function save() {
