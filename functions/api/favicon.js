@@ -72,8 +72,19 @@ async function fallback(siteUrl, reason) {
     } catch {}
   }
 
-  // DuckDuckGo favicon service
+  // Google favicon service
   const domain = new URL(siteUrl).hostname;
+  const googleUrl = `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
+  try {
+    const res = await fetch(googleUrl, { signal: AbortSignal.timeout(2000) });
+    if (res.ok && isImageResponse(res)) {
+      return new Response(JSON.stringify({ found: true, url: googleUrl }), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  } catch {}
+
+  // DuckDuckGo favicon service
   const ddgUrl = `https://icons.duckduckgo.com/ip3/${domain}.ico`;
   try {
     const res = await fetch(ddgUrl, { method: "HEAD", signal: AbortSignal.timeout(2000) });
