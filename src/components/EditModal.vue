@@ -1,6 +1,6 @@
 <script setup>
 import { ref, watch, computed, inject } from 'vue'
-import { ICONS } from '../data/icons'
+import { ICONS, EMOJIS } from '../data/icons'
 import ImageCropper from './ImageCropper.vue'
 
 const props = defineProps({
@@ -21,12 +21,16 @@ const faviconPreview = ref('')
 const fetchingFavicon = ref(false)
 const cropFile = ref(null)
 const showCropper = ref(false)
+const iconMode = ref('svg')
+const selectedEmoji = ref('')
 
 const isEditing = computed(() => props.editIndex >= 0)
 const modalTitle = computed(() => isEditing.value ? '编辑项目' : '新增项目')
 
 watch(() => props.visible, (val) => {
   if (!val) return
+  iconMode.value = 'svg'
+  selectedEmoji.value = ''
   faviconPreview.value = ''
   if (props.editIndex >= 0) {
     const svc = props.services[props.editIndex]
@@ -34,7 +38,13 @@ watch(() => props.visible, (val) => {
       name.value = svc.name
       url.value = svc.url
       iconUrl.value = svc.iconType === 'url' ? svc.icon : ''
-      selectedIcon.value = svc.iconType === 'preset' ? svc.icon : 'server'
+      if (svc.iconType === 'emoji') {
+        iconMode.value = 'emoji'
+        selectedEmoji.value = svc.icon
+        selectedIcon.value = 'server'
+      } else {
+        selectedIcon.value = svc.iconType === 'preset' ? svc.icon : 'server'
+      }
     }
   } else {
     name.value = ''
@@ -46,7 +56,16 @@ watch(() => props.visible, (val) => {
 
 function selectIcon(key) {
   selectedIcon.value = key
+  selectedEmoji.value = ''
   iconUrl.value = ''
+  iconMode.value = 'svg'
+}
+
+function selectEmoji(e) {
+  selectedEmoji.value = e
+  selectedIcon.value = ''
+  iconUrl.value = ''
+  iconMode.value = 'emoji'
 }
 
 function parseDomain(u) {
@@ -145,6 +164,9 @@ function save() {
   if (iu) {
     svc.iconType = 'url'
     svc.icon = iu
+  } else if (iconMode.value === 'emoji' && selectedEmoji.value) {
+    svc.iconType = 'emoji'
+    svc.icon = selectedEmoji.value
   } else {
     svc.iconType = 'preset'
     svc.icon = selectedIcon.value
@@ -192,7 +214,19 @@ function handleOverlayClick(e) {
       <div class="form-group">
         <label>图标</label>
         <div class="icon-picker-container">
-          <div class="icon-picker-grid">
+          <div class="icon-tabs">
+            <button
+              class="icon-tab"
+              :class="{ active: iconMode === 'svg' }"
+              @click="iconMode = 'svg'"
+            >SVG</button>
+            <button
+              class="icon-tab"
+              :class="{ active: iconMode === 'emoji' }"
+              @click="iconMode = 'emoji'"
+            >Emoji</button>
+          </div>
+          <div v-if="iconMode === 'svg'" class="icon-picker-grid">
             <div
               v-for="(svg, key) in ICONS"
               :key="key"
@@ -203,6 +237,15 @@ function handleOverlayClick(e) {
               <span v-html="svg"></span>
               <span>{{ key }}</span>
             </div>
+          </div>
+          <div v-else class="emoji-picker-grid">
+            <div
+              v-for="e in EMOJIS"
+              :key="e"
+              class="emoji-picker-item"
+              :class="{ selected: selectedEmoji === e }"
+              @click="selectEmoji(e)"
+            >{{ e }}</div>
           </div>
         </div>
         <div style="margin-top:12px;display:flex;gap:10px;align-items:center">

@@ -84,6 +84,7 @@ function handleDrop(e) {
         :src="service.icon"
         :alt="service.name"
       >
+      <span v-else-if="service.iconType === 'emoji'" class="card-icon-emoji">{{ service.icon }}</span>
       <span v-else v-html="ICONS[service.icon] || ICONS.server"></span>
     </div>
     <div class="card-name" :title="service.url">{{ service.name }}</div>
