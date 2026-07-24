@@ -63,28 +63,41 @@ async function fetchFavicon() {
   if (!domain) { showToast('链接格式不正确'); return }
 
   fetchingFavicon.value = true
-  const protocol = u.includes('http://') ? 'http://' : 'https://'
+  // Normalize URL — add protocol if missing
+  const normalized = u.includes('://') ? u : 'https://' + u
 
-  // Try direct favicon.ico — site's real icon
-  const direct = `${protocol}${domain}/favicon.ico`
-  const img = new Image()
-  img.onload = () => {
-    // Reject tiny icons (1x1 spacer GIF)
-    if (img.naturalWidth < 8 && img.naturalHeight < 8) {
+  try {
+    // Backend fetches page HTML, parses <link rel="icon">, falls back to /favicon.ico
+    const res = await fetch(`/api/favicon?url=${encodeURIComponent(normalized)}`)
+    const data = await res.json()
+
+    if (!data.found || !data.url) {
       showToast('未找到图标，可上传自定义图标')
       fetchingFavicon.value = false
       return
     }
-    faviconPreview.value = direct
-    iconUrl.value = direct
-    selectedIcon.value = ''
+
+    // Verify loaded icon is not a 1x1 spacer
+    const img = new Image()
+    img.onload = () => {
+      if (img.naturalWidth < 8 && img.naturalHeight < 8) {
+        showToast('未找到图标，可上传自定义图标')
+      } else {
+        faviconPreview.value = data.url
+        iconUrl.value = data.url
+        selectedIcon.value = ''
+      }
+      fetchingFavicon.value = false
+    }
+    img.onerror = () => {
+      showToast('未找到图标，可上传自定义图标')
+      fetchingFavicon.value = false
+    }
+    img.src = data.url
+  } catch {
+    showToast('获取图标失败')
     fetchingFavicon.value = false
   }
-  img.onerror = () => {
-    showToast('未找到图标，可上传自定义图标')
-    fetchingFavicon.value = false
-  }
-  img.src = direct
 }
 
 function pickFile() {
