@@ -22,13 +22,6 @@ const startOffset = ref({ x: 0, y: 0 })
 const naturalW = ref(0)
 const naturalH = ref(0)
 
-// Track the image natural dimensions
-function initState() {
-  offsetX.value = 0
-  offsetY.value = 0
-  scale.value = 1
-}
-
 onMounted(() => {
   if (props.file) {
     imageUrl.value = URL.createObjectURL(props.file)
@@ -43,18 +36,24 @@ function onImgLoad(e) {
   const img = e.target
   naturalW.value = img.naturalWidth
   naturalH.value = img.naturalHeight
-  initState()
+  // Initial zoom: fill crop square (cover mode)
+  scale.value = Math.max(CROP_SIZE / img.naturalWidth, CROP_SIZE / img.naturalHeight)
+  offsetX.value = 0
+  offsetY.value = 0
 }
 
 // Center image initially: fit shortest side to crop box
 function clampOffset() {
-  const displayW = naturalW.value * scale.value
-  const displayH = naturalH.value * scale.value
+  const halfW = (naturalW.value * scale.value) / 2
+  const halfH = (naturalH.value * scale.value) / 2
   const halfVp = CROP_SIZE / 2
-  const halfW = displayW / 2
-  const halfH = displayH / 2
-  offsetX.value = Math.min(halfVp, Math.max(-halfW + halfVp, offsetX.value))
-  offsetY.value = Math.min(halfVp, Math.max(-halfH + halfVp, offsetY.value))
+
+  // Allow center to move within viewport; extra when image is larger
+  const maxX = halfVp + Math.max(0, halfW - halfVp)
+  const maxY = halfVp + Math.max(0, halfH - halfVp)
+
+  offsetX.value = Math.min(maxX, Math.max(-maxX, offsetX.value))
+  offsetY.value = Math.min(maxY, Math.max(-maxY, offsetY.value))
 }
 
 function onMouseDown(e) {

@@ -65,30 +65,24 @@ async function fetchFavicon() {
   fetchingFavicon.value = true
   const protocol = u.includes('http://') ? 'http://' : 'https://'
 
-  // Try direct favicon.ico first (actual site icon)
+  // Try direct favicon.ico — site's real icon
   const direct = `${protocol}${domain}/favicon.ico`
   const img = new Image()
   img.onload = () => {
+    // Reject tiny icons (1x1 spacer GIF)
+    if (img.naturalWidth < 8 && img.naturalHeight < 8) {
+      showToast('未找到图标，可上传自定义图标')
+      fetchingFavicon.value = false
+      return
+    }
     faviconPreview.value = direct
     iconUrl.value = direct
     selectedIcon.value = ''
     fetchingFavicon.value = false
   }
   img.onerror = () => {
-    // Fallback: Google S2 for public domains
-    const fallback = `https://www.google.com/s2/favicons?domain=${domain}&sz=64`
-    const img2 = new Image()
-    img2.onload = () => {
-      faviconPreview.value = fallback
-      iconUrl.value = fallback
-      selectedIcon.value = ''
-      fetchingFavicon.value = false
-    }
-    img2.onerror = () => {
-      showToast('未找到图标')
-      fetchingFavicon.value = false
-    }
-    img2.src = fallback
+    showToast('未找到图标，可上传自定义图标')
+    fetchingFavicon.value = false
   }
   img.src = direct
 }
