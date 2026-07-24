@@ -45,6 +45,11 @@ export async function onRequest(context) {
   }
 }
 
+function isImageResponse(res) {
+  const ct = res.headers.get("Content-Type") || "";
+  return ct.startsWith("image/");
+}
+
 const FALLBACK_PATHS = [
   "/favicon.ico",
   "/favicon.png",
@@ -59,7 +64,7 @@ async function fallback(siteUrl, reason) {
     const tryUrl = new URL(path, siteUrl).href;
     try {
       const res = await fetch(tryUrl, { method: "HEAD", signal: AbortSignal.timeout(2000) });
-      if (res.ok) {
+      if (res.ok && isImageResponse(res)) {
         return new Response(JSON.stringify({ found: true, url: tryUrl }), {
           headers: { "Content-Type": "application/json" },
         });
@@ -72,7 +77,7 @@ async function fallback(siteUrl, reason) {
   const ddgUrl = `https://icons.duckduckgo.com/ip3/${domain}.ico`;
   try {
     const res = await fetch(ddgUrl, { method: "HEAD", signal: AbortSignal.timeout(2000) });
-    if (res.ok) {
+    if (res.ok && isImageResponse(res)) {
       return new Response(JSON.stringify({ found: true, url: ddgUrl }), {
         headers: { "Content-Type": "application/json" },
       });
