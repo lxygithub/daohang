@@ -96,6 +96,20 @@ a { color: inherit; text-decoration: none; }
   height: 120px;
 }
 
+/* Empty search hint */
+.empty-hint {
+  text-align: center;
+  padding: 80px 20px;
+  color: #666;
+  font-size: 1.05rem;
+}
+.empty-icon {
+  width: 48px;
+  height: 48px;
+  margin: 0 auto 16px;
+  opacity: 0.4;
+}
+
 /* Card */
 .card {
   position: relative;

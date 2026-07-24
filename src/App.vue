@@ -97,6 +97,8 @@ onMounted(async () => {
   clockTimer = setInterval(updateClock, 1000)
   await loadConfig()
   applyBackground()
+  // Clear deferred browser autofill — Chrome ignores autocomplete=off
+  requestAnimationFrame(() => { searchQuery.value = '' })
 })
 
 onUnmounted(() => {
@@ -111,13 +113,16 @@ onUnmounted(() => {
       <div class="clock">{{ clockText }}</div>
     </div>
     <div class="header-actions">
-      <input
-        type="text"
-        class="search-input"
-        v-model="searchQuery"
-        placeholder="搜索..."
-        autocomplete="off"
-      >
+      <form autocomplete="off" @submit.prevent>
+        <input
+          type="text"
+          class="search-input"
+          v-model="searchQuery"
+          placeholder="搜索..."
+          autocomplete="nope"
+          name="no-autofill"
+        >
+      </form>
       <button class="btn" title="新增" @click="openAddModal">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
           <line x1="12" y1="5" x2="12" y2="19"/>

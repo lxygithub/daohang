@@ -20,6 +20,10 @@ const filteredServices = computed(() => {
     .filter(s => s.name.toLowerCase().includes(q))
 })
 
+const showEmptyHint = computed(() =>
+  props.filter && filteredServices.value.length === 0
+)
+
 function openUrl(url) {
   window.open(url, '_blank')
 }
@@ -56,7 +60,14 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="card-grid">
+  <div v-if="showEmptyHint" class="empty-hint">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="empty-icon">
+      <circle cx="11" cy="11" r="8"/>
+      <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+    </svg>
+    <div>没有找到匹配「{{ props.filter }}」的服务</div>
+  </div>
+  <div v-else class="card-grid">
     <NavCard
       v-for="svc in filteredServices"
       :key="svc.id"
