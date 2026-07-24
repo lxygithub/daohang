@@ -23,6 +23,10 @@ const cropFile = ref(null)
 const showCropper = ref(false)
 const iconMode = ref('svg')
 const selectedEmoji = ref('')
+const iconText = ref('')
+const iconBgColor = ref('#3b82f6')
+const textIconPreview = ref('')
+const generatingText = ref(false)
 
 const isEditing = computed(() => props.editIndex >= 0)
 const modalTitle = computed(() => isEditing.value ? '编辑项目' : '新增项目')
@@ -31,6 +35,10 @@ watch(() => props.visible, (val) => {
   if (!val) return
   iconMode.value = 'svg'
   selectedEmoji.value = ''
+  selectedIcon.value = 'server'
+  iconText.value = ''
+  iconBgColor.value = '#3b82f6'
+  textIconPreview.value = ''
   faviconPreview.value = ''
   if (props.editIndex >= 0) {
     const svc = props.services[props.editIndex]
@@ -41,7 +49,6 @@ watch(() => props.visible, (val) => {
       if (svc.iconType === 'emoji') {
         iconMode.value = 'emoji'
         selectedEmoji.value = svc.icon
-        selectedIcon.value = 'server'
       } else {
         selectedIcon.value = svc.iconType === 'preset' ? svc.icon : 'server'
       }
@@ -49,8 +56,6 @@ watch(() => props.visible, (val) => {
   } else {
     name.value = ''
     url.value = ''
-    iconUrl.value = ''
-    selectedIcon.value = 'server'
   }
 })
 
@@ -58,6 +63,7 @@ function selectIcon(key) {
   selectedIcon.value = key
   selectedEmoji.value = ''
   iconUrl.value = ''
+  textIconPreview.value = ''
   iconMode.value = 'svg'
 }
 
@@ -65,7 +71,61 @@ function selectEmoji(e) {
   selectedEmoji.value = e
   selectedIcon.value = ''
   iconUrl.value = ''
+  textIconPreview.value = ''
   iconMode.value = 'emoji'
+}
+
+function switchToText() {
+  iconMode.value = 'text'
+  selectedIcon.value = ''
+  selectedEmoji.value = ''
+  iconUrl.value = ''
+  textIconPreview.value = ''
+  // Auto-fill first char of name
+  if (!iconText.value && name.value) {
+    iconText.value = name.value.charAt(0).toUpperCase()
+  }
+}
+
+function generateTextIcon() {
+  const text = iconText.value.trim()
+  if (!text) { showToast('请输入文字'); return }
+  generatingText.value = true
+
+  const size = 128
+  const canvas = document.createElement('canvas')
+  canvas.width = size
+  canvas.height = size
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+
+  // Rounded rect
+  const r = 24
+  ctx.beginPath()
+  ctx.moveTo(r, 0)
+  ctx.lineTo(size - r, 0)
+  ctx.quadraticCurveTo(size, 0, size, r)
+  ctx.lineTo(size, size - r)
+  ctx.quadraticCurveTo(size, size, size - r, size)
+  ctx.lineTo(r, size)
+  ctx.quadraticCurveTo(0, size, 0, size - r)
+  ctx.lineTo(0, r)
+  ctx.quadraticCurveTo(0, 0, r, 0)
+  ctx.closePath()
+  ctx.fillStyle = iconBgColor.value
+  ctx.fill()
+
+  // Text
+  const fontSize = text.length > 2 ? 36 : text.length > 1 ? 52 : 64
+  ctx.fillStyle = '#fff'
+  ctx.font = `bold ${fontSize}px -apple-system, "Segoe UI", sans-serif`
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(text.slice(0, 2), size / 2, size / 2)
+
+  textIconPreview.value = canvas.toDataURL('image/png')
+  iconUrl.value = textIconPreview.value
+  generatingText.value = false
 }
 
 function parseDomain(u) {
@@ -225,6 +285,11 @@ function handleOverlayClick(e) {
               :class="{ active: iconMode === 'emoji' }"
               @click="iconMode = 'emoji'"
             >Emoji</button>
+            <button
+              class="icon-tab"
+              :class="{ active: iconMode === 'text' }"
+              @click="switchToText"
+            >文字</button>
           </div>
           <div v-if="iconMode === 'svg'" class="icon-picker-grid">
             <div
@@ -238,7 +303,7 @@ function handleOverlayClick(e) {
               <span>{{ key }}</span>
             </div>
           </div>
-          <div v-else class="emoji-picker-grid">
+          <div v-else-if="iconMode === 'emoji'" class="emoji-picker-grid">
             <div
               v-for="e in EMOJIS"
               :key="e"
@@ -246,6 +311,25 @@ function handleOverlayClick(e) {
               :class="{ selected: selectedEmoji === e }"
               @click="selectEmoji(e)"
             >{{ e }}</div>
+          </div>
+          <div v-else class="text-icon-config">
+            <div class="text-icon-row">
+              <label>文字</label>
+              <input type="text" class="form-input" v-model="iconText" placeholder="A" maxlength="4" @input="iconText = iconText.slice(0,4)">
+            </div>
+            <div class="text-icon-row">
+              <label>背景色</label>
+              <div class="text-color-row">
+                <input type="color" v-model="iconBgColor" class="color-input">
+                <input type="text" class="form-input color-text" v-model="iconBgColor" maxlength="7">
+              </div>
+            </div>
+            <button class="btn-text primary text-generate-btn" @click="generateTextIcon" :disabled="generatingText">
+              {{ generatingText ? '生成中…' : '生成图标' }}
+            </button>
+            <div v-if="textIconPreview" class="text-icon-preview-wrap">
+              <img :src="textIconPreview" class="text-icon-preview">
+            </div>
           </div>
         </div>
         <div style="margin-top:12px;display:flex;gap:10px;align-items:center">

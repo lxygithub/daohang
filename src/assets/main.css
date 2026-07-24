@@ -416,6 +416,52 @@ a { color: inherit; text-decoration: none; }
 .emoji-picker-item:hover { background: rgba(255,255,255,0.08); }
 .emoji-picker-item.selected { border-color: rgba(255,255,255,0.4); }
 
+/* Text icon */
+.text-icon-config {
+  padding: 8px 0;
+}
+.text-icon-row {
+  margin-bottom: 12px;
+}
+.text-icon-row label {
+  display: block;
+  font-size: 0.8rem;
+  color: #999;
+  margin-bottom: 4px;
+}
+.text-color-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.color-input {
+  width: 40px;
+  height: 36px;
+  padding: 2px;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+.color-text {
+  flex: 1;
+  font-size: 0.85rem !important;
+  padding: 6px 10px !important;
+}
+.text-generate-btn {
+  width: 100%;
+  margin-top: 4px;
+}
+.text-icon-preview-wrap {
+  text-align: center;
+  margin-top: 12px;
+}
+.text-icon-preview {
+  width: 64px;
+  height: 64px;
+  border-radius: 8px;
+}
+
 .modal-footer {
   display: flex;
   justify-content: flex-end;
