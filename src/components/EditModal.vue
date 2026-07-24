@@ -1,6 +1,7 @@
 <script setup>
 import { ref, watch, computed, inject } from 'vue'
 import { ICONS } from '../data/icons'
+import ImageCropper from './ImageCropper.vue'
 
 const props = defineProps({
   visible: Boolean,
@@ -18,6 +19,8 @@ const iconUrl = ref('')
 const selectedIcon = ref('server')
 const faviconPreview = ref('')
 const fetchingFavicon = ref(false)
+const cropFile = ref(null)
+const showCropper = ref(false)
 
 const isEditing = computed(() => props.editIndex >= 0)
 const modalTitle = computed(() => isEditing.value ? '编辑项目' : '新增项目')
@@ -88,6 +91,32 @@ async function fetchFavicon() {
     img2.src = fallback
   }
   img.src = direct
+}
+
+function pickFile() {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = 'image/*'
+  input.onchange = () => {
+    if (input.files?.length) {
+      cropFile.value = input.files[0]
+      showCropper.value = true
+    }
+  }
+  input.click()
+}
+
+function onCropDone(dataUrl) {
+  iconUrl.value = dataUrl
+  selectedIcon.value = ''
+  faviconPreview.value = dataUrl
+  showCropper.value = false
+  cropFile.value = null
+}
+
+function onCropCancel() {
+  showCropper.value = false
+  cropFile.value = null
 }
 
 function save() {
@@ -169,8 +198,9 @@ function handleOverlayClick(e) {
             </div>
           </div>
         </div>
-        <div style="margin-top:10px;display:flex;gap:10px;align-items:center">
-          <input type="text" class="form-input" v-model="iconUrl" placeholder="或输入图片URL：https://..." style="flex:1">
+        <div style="margin-top:12px;display:flex;gap:10px;align-items:center">
+          <button class="btn-text upload-btn" @click="pickFile">上传图标</button>
+          <input type="text" class="form-input" v-model="iconUrl" placeholder="或输入图片URL" style="flex:1">
           <img v-if="faviconPreview" :src="faviconPreview" class="favicon-preview" @error="faviconPreview = ''">
         </div>
       </div>
@@ -180,4 +210,11 @@ function handleOverlayClick(e) {
       </div>
     </div>
   </div>
+
+  <ImageCropper
+    v-if="showCropper && cropFile"
+    :file="cropFile"
+    @crop="onCropDone"
+    @cancel="onCropCancel"
+  />
 </template>
