@@ -45,23 +45,33 @@ export async function onRequest(context) {
   }
 }
 
-async function fallback(siteUrl, reason) {
-  // Try /favicon.ico
-  const icoUrl = new URL("/favicon.ico", siteUrl).href;
-  try {
-    const res = await fetch(icoUrl, { method: "HEAD", signal: AbortSignal.timeout(3000) });
-    if (res.ok) {
-      return new Response(JSON.stringify({ found: true, url: icoUrl }), {
-        headers: { "Content-Type": "application/json" },
-      });
-    }
-  } catch {}
+const FALLBACK_PATHS = [
+  "/favicon.ico",
+  "/favicon.png",
+  "/public/favicon.png",
+  "/assets/favicon.ico",
+  "/assets/favicon.png",
+  "/images/favicon.ico",
+];
 
-  // DuckDuckGo favicon service as universal fallback
+async function fallback(siteUrl, reason) {
+  for (const path of FALLBACK_PATHS) {
+    const tryUrl = new URL(path, siteUrl).href;
+    try {
+      const res = await fetch(tryUrl, { method: "HEAD", signal: AbortSignal.timeout(2000) });
+      if (res.ok) {
+        return new Response(JSON.stringify({ found: true, url: tryUrl }), {
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    } catch {}
+  }
+
+  // DuckDuckGo favicon service
   const domain = new URL(siteUrl).hostname;
   const ddgUrl = `https://icons.duckduckgo.com/ip3/${domain}.ico`;
   try {
-    const res = await fetch(ddgUrl, { method: "HEAD", signal: AbortSignal.timeout(3000) });
+    const res = await fetch(ddgUrl, { method: "HEAD", signal: AbortSignal.timeout(2000) });
     if (res.ok) {
       return new Response(JSON.stringify({ found: true, url: ddgUrl }), {
         headers: { "Content-Type": "application/json" },
