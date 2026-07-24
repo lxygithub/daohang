@@ -3,12 +3,14 @@ import vue from '@vitejs/plugin-vue'
 import { execSync } from 'child_process'
 
 const now = new Date()
-const Y = now.getFullYear()
-const M = String(now.getMonth() + 1).padStart(2, '0')
-const D = String(now.getDate()).padStart(2, '0')
-const h = String(now.getHours()).padStart(2, '0')
-const m = String(now.getMinutes()).padStart(2, '0')
-const buildTime = `${Y}/${M}/${D} ${h}:${m}`
+const fmt = new Intl.DateTimeFormat('zh-CN', {
+  timeZone: 'Asia/Shanghai',
+  year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', hour12: false,
+})
+const parts = fmt.formatToParts(now)
+const p = (type) => parts.find(x => x.type === type).value
+const buildTime = `${p('year')}/${p('month')}/${p('day')} ${p('hour')}:${p('minute')}`
 
 export default defineConfig({
   plugins: [vue()],
