@@ -97,8 +97,6 @@ onMounted(async () => {
   clockTimer = setInterval(updateClock, 1000)
   await loadConfig()
   applyBackground()
-  // Clear deferred browser autofill — Chrome ignores autocomplete=off
-  requestAnimationFrame(() => { searchQuery.value = '' })
 })
 
 onUnmounted(() => {
@@ -119,8 +117,9 @@ onUnmounted(() => {
           class="search-input"
           v-model="searchQuery"
           placeholder="搜索..."
-          autocomplete="nope"
-          name="no-autofill"
+          readonly
+          @focus="e => e.target.removeAttribute('readonly')"
+          @blur="e => !e.target.value && e.target.setAttribute('readonly', '')"
         >
       </form>
       <button class="btn" title="新增" @click="openAddModal">
