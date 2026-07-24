@@ -107,75 +107,73 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="app-layout">
-    <header class="header">
-      <div class="header-left">
-        <h1>导航</h1>
-        <div class="clock">{{ clockText }}</div>
-      </div>
-      <div class="header-actions">
-        <form autocomplete="off" @submit.prevent>
-          <input
-            type="text"
-            class="search-input"
-            v-model="searchQuery"
-            placeholder="搜索..."
-            readonly
-            @focus="e => e.target.removeAttribute('readonly')"
-            @blur="e => !e.target.value && e.target.setAttribute('readonly', '')"
-          >
-        </form>
-        <button class="btn" title="新增" @click="openAddModal">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <line x1="12" y1="5" x2="12" y2="19"/>
-            <line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-        </button>
-        <button class="btn" title="设置" @click="showSettingsModal = true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="3"/>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-          </svg>
-        </button>
-      </div>
-    </header>
+  <header class="header">
+    <div class="header-left">
+      <h1>导航</h1>
+      <div class="clock">{{ clockText }}</div>
+    </div>
+    <div class="header-actions">
+      <form autocomplete="off" @submit.prevent>
+        <input
+          type="text"
+          class="search-input"
+          v-model="searchQuery"
+          placeholder="搜索..."
+          readonly
+          @focus="e => e.target.removeAttribute('readonly')"
+          @blur="e => !e.target.value && e.target.setAttribute('readonly', '')"
+        >
+      </form>
+      <button class="btn" title="新增" @click="openAddModal">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <line x1="12" y1="5" x2="12" y2="19"/>
+          <line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+      </button>
+      <button class="btn" title="设置" @click="showSettingsModal = true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
 
-    <main class="main-content">
-      <div v-if="loading" style="text-align:center;padding:60px 0;color:#666">加载中...</div>
-      <div v-else-if="!config" style="text-align:center;padding:60px 0;color:#666">加载失败</div>
-      <NavGrid
-        v-else
-        :services="config.services || []"
-        :filter="searchQuery"
-        @reordered="saveConfig"
-      />
-    </main>
-
-    <EditModal
-      v-if="config"
-      :visible="showEditModal"
-      :services="config.services"
-      :edit-index="editingIndex"
-      @close="closeEditModal"
-      @saved="saveConfig"
+  <main class="main-content">
+    <div v-if="loading" style="text-align:center;padding:60px 0;color:#666">加载中...</div>
+    <div v-else-if="!config" style="text-align:center;padding:60px 0;color:#666">加载失败</div>
+    <NavGrid
+      v-else
+      :services="config.services || []"
+      :filter="searchQuery"
+      @reordered="saveConfig"
     />
+  </main>
 
-    <SettingsModal
-      v-if="config"
-      :visible="showSettingsModal"
-      :background="config.background"
-      @close="showSettingsModal = false"
-      @saved="saveConfig"
-    />
+  <EditModal
+    v-if="config"
+    :visible="showEditModal"
+    :services="config.services"
+    :edit-index="editingIndex"
+    @close="closeEditModal"
+    @saved="saveConfig"
+  />
 
-    <PasswordModal
-      :visible="showPasswordModal"
-      @verified="onPasswordVerified"
-      @cancel="onPasswordCancel"
-    />
+  <SettingsModal
+    v-if="config"
+    :visible="showSettingsModal"
+    :background="config.background"
+    @close="showSettingsModal = false"
+    @saved="saveConfig"
+  />
 
-    <Toast :message="toastMessage" :visible="toastVisible" />
+  <PasswordModal
+    :visible="showPasswordModal"
+    @verified="onPasswordVerified"
+    @cancel="onPasswordCancel"
+  />
 
-    <footer class="version-bar">Build：{{ buildTime }}</footer>
-  </div>
+  <Toast :message="toastMessage" :visible="toastVisible" />
+
+  <footer class="version-bar">Build：{{ buildTime }}</footer>
 </template>

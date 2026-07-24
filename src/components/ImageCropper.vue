@@ -45,25 +45,40 @@ function onImgLoad() {
 }
 
 function confirm() {
-  const data = cropper?.getData()
-  if (!data || !imageUrl.value) return
+  if (!cropper || !imageUrl.value) return
 
-  // Create fresh Image from blob URL to avoid preload race
-  const img = new Image()
-  img.onload = () => {
+  // cropperjs v2 API: getCropperSelection() has x/y/width/height
+  // in the canvas coordinate space. Use DOM bounding rects against
+  // the original image to compute natural-image crop coordinates.
+  const sel = cropper.getCropperSelection()
+  const imgComponent = cropper.getCropperImage()
+  if (!sel || !sel.width || !sel.height || !imgComponent) return
+
+  const imgEl = imgComponent.$image  // native HTMLImageElement
+  if (!imgEl) return
+
+  const selRect = sel.getBoundingClientRect()
+  const imgRect = imgEl.getBoundingClientRect()
+
+  const scaleX = imgEl.naturalWidth / imgRect.width
+  const scaleY = imgEl.naturalHeight / imgRect.height
+
+  const x = (selRect.left - imgRect.left) * scaleX
+  const y = (selRect.top - imgRect.top) * scaleY
+  const w = selRect.width * scaleX
+  const h = selRect.height * scaleY
+
+  const src = new Image()
+  src.onload = () => {
     const canvas = document.createElement('canvas')
     canvas.width = OUTPUT_SIZE
     canvas.height = OUTPUT_SIZE
     const ctx = canvas.getContext('2d')
-    ctx.drawImage(
-      img,
-      data.x, data.y, data.width, data.height,
-      0, 0, OUTPUT_SIZE, OUTPUT_SIZE,
-    )
+    if (!ctx) return
+    ctx.drawImage(src, x, y, w, h, 0, 0, OUTPUT_SIZE, OUTPUT_SIZE)
     emit('crop', canvas.toDataURL('image/png'))
   }
-  img.onerror = () => { /* silent — do nothing */ }
-  img.src = imageUrl.value
+  src.src = imageUrl.value
 }
 
 function handleOverlayClick(e) {
