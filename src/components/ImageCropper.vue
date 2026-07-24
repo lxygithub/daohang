@@ -37,7 +37,14 @@ function onImgLoad() {
   nextTick(() => nextTick(() => {
     const sel = cropper?.getCropperSelection()
     const canvas = cropper?.getCropperCanvas()
-    if (!sel || !canvas) return
+    const imgComp = cropper?.getCropperImage()
+    if (!sel || !canvas || !imgComp) return
+
+    // Show checkerboard background
+    canvas.background = true
+
+    // Scale image to cover the canvas
+    imgComp.initialCenterSize = 'cover'
 
     const s = Math.min(canvas.clientWidth, canvas.clientHeight) * 0.85
     sel.aspectRatio = 1
