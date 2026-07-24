@@ -23,14 +23,18 @@ export async function onRequest(context) {
     const html = await res.text();
 
     // Match <link rel="icon" href="..."> or <link rel="shortcut icon" href="...">
+    // Require whitespace before href= to avoid matching ng-href
     const iconMatch = html.match(
-      /<link[^>]*rel=["'](?:shortcut )?icon["'][^>]*href=["']([^"']+)["'][^>]*>/i
+      /<link[^>]*rel=["'](?:shortcut )?icon["'][^>]*\shref=["']([^"']+)["'][^>]*>/i
     );
-    if (!iconMatch) {
+    // Also try apple-touch-icon if no standard icon found
+    const appleMatch = !iconMatch ? html.match(
+      /<link[^>]*rel=["']apple-touch-icon(?:-precomposed)?["'][^>]*\shref=["']([^"']+)["'][^>]*>/i
+    ) : null;
+    const iconPath = iconMatch ? iconMatch[1] : (appleMatch ? appleMatch[1] : null);
+    if (!iconPath) {
       return fallback(siteUrl, "no link tag");
     }
-
-    const iconPath = iconMatch[1];
     const fullUrl = new URL(iconPath, siteUrl).href;
 
     return new Response(JSON.stringify({ found: true, url: fullUrl }), {
