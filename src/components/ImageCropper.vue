@@ -44,16 +44,10 @@ function onImgLoad(e) {
 
 // Center image initially: fit shortest side to crop box
 function clampOffset() {
-  const halfW = (naturalW.value * scale.value) / 2
-  const halfH = (naturalH.value * scale.value) / 2
-  const halfVp = CROP_SIZE / 2
-
-  // Allow center to move within viewport; extra when image is larger
-  const maxX = halfVp + Math.max(0, halfW - halfVp)
-  const maxY = halfVp + Math.max(0, halfH - halfVp)
-
-  offsetX.value = Math.min(maxX, Math.max(-maxX, offsetX.value))
-  offsetY.value = Math.min(maxY, Math.max(-maxY, offsetY.value))
+  // Keep image center within 2× viewport — prevents infinite drift, allows free drag
+  const limit = CROP_SIZE
+  offsetX.value = Math.min(limit, Math.max(-limit, offsetX.value))
+  offsetY.value = Math.min(limit, Math.max(-limit, offsetY.value))
 }
 
 function onMouseDown(e) {
