@@ -12,10 +12,16 @@ const OUTPUT_SIZE = 128
 const imgRef = ref(null)
 const imageUrl = ref('')
 let cropper = null
+let loadedImage = null  // for manual canvas draw
 
 onMounted(() => {
   if (props.file) {
-    imageUrl.value = URL.createObjectURL(props.file)
+    const url = URL.createObjectURL(props.file)
+    imageUrl.value = url
+    // Preload for manual draw in case getCroppedCanvas fails
+    const img = new Image()
+    img.onload = () => { loadedImage = img }
+    img.src = url
   }
 })
 
@@ -45,15 +51,23 @@ function onImgLoad() {
 }
 
 function confirm() {
-  if (!cropper) return
-  const canvas = cropper.getCroppedCanvas({
-    width: OUTPUT_SIZE,
-    height: OUTPUT_SIZE,
-    fillColor: 'transparent',
-    imageSmoothingEnabled: true,
-    imageSmoothingQuality: 'high',
-  })
-  if (!canvas) return
+  const data = cropper?.getData()
+  if (!data) return
+
+  const src = loadedImage
+  if (!src) return
+
+  const canvas = document.createElement('canvas')
+  canvas.width = OUTPUT_SIZE
+  canvas.height = OUTPUT_SIZE
+  const ctx = canvas.getContext('2d')
+  if (!ctx) return
+
+  ctx.drawImage(
+    src,
+    data.x, data.y, data.width, data.height,
+    0, 0, OUTPUT_SIZE, OUTPUT_SIZE,
+  )
   emit('crop', canvas.toDataURL('image/png'))
 }
 
