@@ -29,24 +29,21 @@ function selectPreset(bg) {
   })
 }
 
-function close() {
+function confirm() {
   const custom = customValue.value.trim()
-  if (custom) {
-    // Must verify BEFORE closing — password modal needs to appear over settings modal
-    ensureVerified(() => {
+  ensureVerified(() => {
+    if (custom) {
       document.body.style.background = custom
       props.background.type = 'color'
       props.background.value = custom
-      emit('saved')
-      emit('close')
-    })
-  } else {
+    }
+    emit('saved')
     emit('close')
-  }
+  })
 }
 
 function handleOverlayClick(e) {
-  if (e.target === e.currentTarget) close()
+  if (e.target === e.currentTarget) return
 }
 </script>
 
@@ -70,7 +67,7 @@ function handleOverlayClick(e) {
         <input type="text" class="form-input" v-model="customValue" placeholder="自定义颜色值：#222 或渐变函数">
       </div>
       <div class="modal-footer">
-        <button class="btn-text cancel" @click="close">关闭</button>
+        <button class="btn-text primary" @click="confirm">确定</button>
       </div>
     </div>
   </div>
