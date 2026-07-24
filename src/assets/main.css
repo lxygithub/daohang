@@ -296,74 +296,35 @@ a { color: inherit; text-decoration: none; }
   object-fit: contain;
 }
 
-/* Crop viewport */
+/* Crop via cropperjs */
 .cropper-modal { max-width: 380px; }
+
+.crop-hint {
+  text-align: center;
+  color: #888;
+  font-size: 0.85rem;
+  margin: -16px 0 14px;
+}
 
 .crop-viewport {
   width: 300px;
   height: 300px;
   margin: 0 auto 16px;
-  border-radius: 8px;
-  overflow: hidden;
+
+  /* cropperjs container */
   position: relative;
-  background: #111;
-  cursor: grab;
-  border: 2px solid rgba(255,255,255,0.12);
-}
-.crop-viewport.dragging { cursor: grabbing; }
-.crop-viewport::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border: 2px solid rgba(255,255,255,0.3);
-  border-radius: 6px;
-  pointer-events: none;
-  z-index: 1;
-}
 
-.crop-image {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform-origin: center center;
-  will-change: transform;
-  user-select: none;
-  -webkit-user-drag: none;
-  pointer-events: none;
+  /* Dark theme overrides */
+  --cropper-mask-bg: rgba(0, 0, 0, 0.5);
+  --cropper-crop-box-border: #60a5fa;
 }
+.crop-viewport > img { max-width: 100%; }
 
-.crop-zoom {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 8px;
-  padding: 0 4px;
-}
-.crop-slider {
-  flex: 1;
-  -webkit-appearance: none;
-  appearance: none;
-  height: 4px;
-  border-radius: 2px;
-  background: rgba(255,255,255,0.15);
-  outline: none;
-}
-.crop-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #60a5fa;
-  cursor: pointer;
-  border: 2px solid rgba(255,255,255,0.2);
-}
-.crop-zoom-label {
-  font-size: 0.8rem;
-  color: #888;
-  min-width: 38px;
-  text-align: right;
-}
+/* cropperjs dark theme overrides */
+.cropper-modal .cropper-container { max-height: 300px; }
+.cropper-modal .cropper-view-box { outline-color: #60a5fa; }
+.cropper-modal .cropper-point { background-color: #60a5fa; }
+.cropper-modal .cropper-line { border-color: #60a5fa; }
 
 .form-input {
   width: 100%;
