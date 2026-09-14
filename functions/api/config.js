@@ -1,4 +1,16 @@
-const ADMIN_PASSWORD = "mewlxy";
+// Password resolution order:
+//   1. env.ADMIN_PASSWORD_SHA256  (recommended: store sha256 hex of your password)
+//   2. env.ADMIN_PASSWORD         (plain text in Cloudflare env vars / wrangler [vars])
+//   3. "mewlxy"                   (legacy fallback so existing deployments keep working)
+async function verifyPassword(env, input) {
+  if (!input) return false;
+  if (env.ADMIN_PASSWORD_SHA256) {
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
+    const hex = [...new Uint8Array(digest)].map(b => b.toString(16).padStart(2, "0")).join("");
+    return hex === env.ADMIN_PASSWORD_SHA256;
+  }
+  return input === (env.ADMIN_PASSWORD || "mewlxy");
+}
 
 const DEFAULT_CONFIG = {
   services: [
@@ -42,14 +54,14 @@ export async function onRequest(context) {
 
       // Password verification endpoint
       if (body.action === "verify") {
-        if (body.password === ADMIN_PASSWORD) {
+        if (await verifyPassword(env, body.password)) {
           return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
         }
         return new Response(JSON.stringify({ ok: false, error: "密码错误" }), { status: 403, headers: { "Content-Type": "application/json" } });
       }
 
       // Save config - require password
-      if (body.password !== ADMIN_PASSWORD) {
+      if (!(await verifyPassword(env, body.password))) {
         return new Response(JSON.stringify({ ok: false, error: "密码错误" }), { status: 403, headers: { "Content-Type": "application/json" } });
       }
 

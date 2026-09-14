@@ -2,6 +2,11 @@ name = "daohang"
 compatibility_date = "2025-01-01"
 pages_build_output_dir = "dist"
 
+[vars]
+# 管理密码（仅存在于服务端，不会打包进前端）。
+# 建议部署后在 Cloudflare Dashboard 加密环境变量，或改用 ADMIN_PASSWORD_SHA256（密码的 sha256 十六进制值）。
+ADMIN_PASSWORD = "mewlxy"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "daohang"

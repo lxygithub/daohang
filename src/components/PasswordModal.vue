@@ -36,7 +36,7 @@ async function submit() {
     })
     const data = await res.json()
     if (data.ok) {
-      emit('verified')
+      emit('verified', pwd)
     } else {
       showToast('密码错误')
       password.value = ''

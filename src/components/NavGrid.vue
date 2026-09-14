@@ -28,6 +28,27 @@ function openUrl(url) {
   window.open(url, '_blank')
 }
 
+// 回车直达：打开第一个匹配项
+function handleOpenFirstMatch() {
+  const first = filteredServices.value[0]
+  if (first) openUrl(first.url)
+}
+
+// 访问统计（本地存储，按服务 id 计数）
+function recordClick(id) {
+  try {
+    const raw = localStorage.getItem('nav_clicks')
+    const clicks = raw ? JSON.parse(raw) : {}
+    clicks[id] = (clicks[id] || 0) + 1
+    localStorage.setItem('nav_clicks', JSON.stringify(clicks))
+  } catch {}
+}
+
+function openService(svc) {
+  recordClick(svc.id)
+  openUrl(svc.url)
+}
+
 function handleDropReorder(e) {
   const { srcIndex, targetIndex } = e.detail
   ensureVerified(() => {
@@ -51,11 +72,13 @@ function handleDeleteService(e) {
 onMounted(() => {
   window.addEventListener('drop-reorder', handleDropReorder)
   window.addEventListener('delete-service', handleDeleteService)
+  window.addEventListener('open-first-match', handleOpenFirstMatch)
 })
 
 onUnmounted(() => {
   window.removeEventListener('drop-reorder', handleDropReorder)
   window.removeEventListener('delete-service', handleDeleteService)
+  window.removeEventListener('open-first-match', handleOpenFirstMatch)
 })
 </script>
 
@@ -73,7 +96,7 @@ onUnmounted(() => {
       :key="svc.id"
       :service="svc"
       :index="svc._index"
-      @open="openUrl(svc.url)"
+      @open="openService(svc)"
     />
   </div>
 </template>

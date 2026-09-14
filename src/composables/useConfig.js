@@ -1,4 +1,16 @@
 import { ref } from 'vue'
+import { useToast } from './useToast'
+
+export const AUTH_KEY = 'nav_auth'
+
+export function getStoredPassword() {
+  try {
+    const raw = sessionStorage.getItem(AUTH_KEY)
+    return raw ? atob(raw) : ''
+  } catch {
+    return ''
+  }
+}
 
 function getDefaultConfig() {
   return {
@@ -48,8 +60,13 @@ export function useConfig() {
 
   async function saveConfig() {
     if (!config.value) return
+    const password = getStoredPassword()
+    if (!password) {
+      useToast().showToast('验证已过期，请重新操作')
+      return
+    }
     try {
-      const body = { ...config.value, password: 'mewlxy' }
+      const body = { ...config.value, password }
       await fetch('/api/config', {
         method: 'POST',
         body: JSON.stringify(body),

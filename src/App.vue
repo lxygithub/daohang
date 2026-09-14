@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, provide } from 'vue'
-import { useConfig } from './composables/useConfig'
+import { useConfig, getStoredPassword, AUTH_KEY } from './composables/useConfig'
 import { useToast } from './composables/useToast'
 import NavGrid from './components/NavGrid.vue'
 import EditModal from './components/EditModal.vue'
@@ -49,6 +49,17 @@ function handleKeydown(e) {
   searchInputRef.value?.focus()
 }
 
+// Enter in search: URL → open directly, otherwise → open first match
+function handleSearchEnter() {
+  const q = searchQuery.value.trim()
+  if (!q) return
+  if (/^(https?:\/\/)?([\w-]+\.)+[a-z]{2,}(:\d+)?(\/\S*)?$/i.test(q)) {
+    window.open(q.includes('://') ? q : 'https://' + q, '_blank')
+    return
+  }
+  window.dispatchEvent(new CustomEvent('open-first-match'))
+}
+
 // Password verification
 const verified = ref(false)
 const showPasswordModal = ref(false)
@@ -63,9 +74,12 @@ function ensureVerified(callback) {
   showPasswordModal.value = true
 }
 
-function onPasswordVerified() {
+function onPasswordVerified(password) {
   verified.value = true
   showPasswordModal.value = false
+  if (password) {
+    try { sessionStorage.setItem(AUTH_KEY, btoa(password)) } catch {}
+  }
   if (pendingAction.value) {
     pendingAction.value()
     pendingAction.value = null
@@ -117,6 +131,8 @@ onMounted(async () => {
   updateClock()
   clockTimer = setInterval(updateClock, 1000)
   window.addEventListener('keydown', handleKeydown)
+  // 会话内记住验证状态，刷新无需重复输密码
+  if (getStoredPassword()) verified.value = true
   await loadConfig()
   applyBackground()
 })
@@ -192,6 +208,7 @@ onUnmounted(() => {
           readonly
           @focus="e => e.target.removeAttribute('readonly')"
           @blur="e => !e.target.value && e.target.setAttribute('readonly', '')"
+          @keydown.enter="handleSearchEnter"
         >
         <kbd v-if="!searchQuery">/</kbd>
       </form>

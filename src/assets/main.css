@@ -330,6 +330,16 @@ input { font-family: inherit; }
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent), var(--shadow-card);
 }
+/* Touch long-press drag states */
+.card.touch-dragging {
+  opacity: 0.55;
+  transform: scale(1.03);
+  box-shadow: 0 0 0 2px var(--accent), var(--shadow-card);
+}
+.card.touch-over {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), var(--shadow-card);
+}
 
 /* Icon container — per-card tint via --h */
 .card-icon {

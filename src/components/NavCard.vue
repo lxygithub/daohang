@@ -85,6 +85,56 @@ function handleDrop(e) {
   const event = new CustomEvent('drop-reorder', { detail: { srcIndex, targetIndex } })
   window.dispatchEvent(event)
 }
+
+// ---- Touch long-press drag (mobile) ----
+let pressTimer = null
+let touchDrag = null
+
+function handleTouchStart(e) {
+  if (e.touches.length !== 1) return
+  const el = e.currentTarget
+  clearTimeout(pressTimer)
+  pressTimer = setTimeout(() => {
+    touchDrag = { el, over: null }
+    el.classList.add('touch-dragging')
+    if (navigator.vibrate) navigator.vibrate(15)
+  }, 260)
+}
+
+function handleTouchMove(e) {
+  if (!touchDrag) {
+    clearTimeout(pressTimer)
+    return
+  }
+  // 拖拽激活后阻止页面滚动
+  e.preventDefault()
+  const t = e.touches[0]
+  const target = document.elementFromPoint(t.clientX, t.clientY)?.closest('.card')
+  document.querySelectorAll('.card.touch-over').forEach(c => c.classList.remove('touch-over'))
+  if (target && target !== touchDrag.el) {
+    target.classList.add('touch-over')
+    touchDrag.over = target
+  } else {
+    touchDrag.over = null
+  }
+}
+
+function handleTouchEnd() {
+  clearTimeout(pressTimer)
+  if (touchDrag) {
+    touchDrag.el.classList.remove('touch-dragging')
+    const over = touchDrag.over
+    if (over) {
+      over.classList.remove('touch-over')
+      const srcIndex = props.index
+      const targetIndex = Number(over.dataset.index)
+      if (srcIndex !== targetIndex && !Number.isNaN(targetIndex)) {
+        window.dispatchEvent(new CustomEvent('drop-reorder', { detail: { srcIndex, targetIndex } }))
+      }
+    }
+  }
+  touchDrag = null
+}
 </script>
 
 <template>
@@ -92,6 +142,7 @@ function handleDrop(e) {
     class="card"
     :style="{ animationDelay: `${Math.min(index * 0.04, 0.5)}s` }"
     draggable="true"
+    :data-index="index"
     :title="service.url"
     @click="handleClick"
     @dragstart="handleDragStart"
@@ -100,6 +151,10 @@ function handleDrop(e) {
     @dragenter="handleDragEnter"
     @dragleave="handleDragLeave"
     @drop="handleDrop"
+    @touchstart="handleTouchStart"
+    @touchmove="handleTouchMove"
+    @touchend="handleTouchEnd"
+    @touchcancel="handleTouchEnd"
   >
     <div class="card-icon" :style="{ '--h': hue }">
       <img
