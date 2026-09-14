@@ -334,23 +334,48 @@ onUnmounted(() => {
 
   <!-- 分组模式 / 字母视图 -->
   <template v-else>
-    <section v-for="sec in sections" :key="sec.name" class="group-section" :class="{ 'alpha-section': !!sec.alpha }">
-      <button class="group-header" type="button" @click="toggleGroup(sec.name)">
-        <svg class="group-chevron" :class="{ collapsed: !!collapsed[sec.name] }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <polyline points="6 9 12 15 18 9"/>
-        </svg>
-        <span class="group-name" :class="{ 'alpha-letter': !!sec.alpha }">{{ sec.name || '未分组' }}</span>
-        <span class="group-count">{{ sec.items.length }}</span>
-      </button>
-      <div v-show="!collapsed[sec.name]" class="card-grid" :class="{ 'layout-list': layout === 'list', 'layout-phone': layout === 'phone' }" :style="layout === 'phone' ? gridVars : null">
-        <NavCard
-          v-for="svc in sec.items"
-          :key="svc.id"
-          :service="svc"
-          :index="svc._index"
-          @open="openService(svc)"
-        />
-      </div>
-    </section>
+    <!-- 字母视图：按字母分组多列铺开，列数随图标数量自适应 -->
+    <div v-if="useAlpha" class="alpha-wrap" :style="gridVars">
+      <section v-for="sec in sections" :key="sec.name" class="alpha-section">
+        <button class="group-header alpha-header" type="button" @click="toggleGroup(sec.name)">
+          <svg class="group-chevron" :class="{ collapsed: !!collapsed[sec.name] }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+          <span class="group-name alpha-letter">{{ sec.name }}</span>
+          <span class="group-count">{{ sec.items.length }}</span>
+        </button>
+        <div v-show="!collapsed[sec.name]" class="card-grid layout-phone alpha-grid">
+          <NavCard
+            v-for="svc in sec.items"
+            :key="svc.id"
+            :service="svc"
+            :index="svc._index"
+            @open="openService(svc)"
+          />
+        </div>
+      </section>
+    </div>
+
+    <!-- 普通分组视图 -->
+    <template v-else>
+      <section v-for="sec in sections" :key="sec.name" class="group-section">
+        <button class="group-header" type="button" @click="toggleGroup(sec.name)">
+          <svg class="group-chevron" :class="{ collapsed: !!collapsed[sec.name] }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+          <span class="group-name">{{ sec.name || '未分组' }}</span>
+          <span class="group-count">{{ sec.items.length }}</span>
+        </button>
+        <div v-show="!collapsed[sec.name]" class="card-grid" :class="{ 'layout-list': layout === 'list', 'layout-phone': layout === 'phone' }" :style="layout === 'phone' ? gridVars : null">
+          <NavCard
+            v-for="svc in sec.items"
+            :key="svc.id"
+            :service="svc"
+            :index="svc._index"
+            @open="openService(svc)"
+          />
+        </div>
+      </section>
+    </template>
   </template>
 </template>

@@ -49,7 +49,7 @@ export function loadGrid() {
     return {
       rows: clamp(raw.rows, 2, 7, d.rows),
       cols: clamp(raw.cols, 3, 9, d.cols),
-      size: clamp(raw.size, 48, 96, d.size),
+      size: clamp(raw.size, 48, 140, d.size),
     }
   } catch { return defaultGrid() }
 }

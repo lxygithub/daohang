@@ -101,6 +101,7 @@ function selectEngine(id) {
 function handleKeydown(e) {
   if (e.key === 'Escape') {
     if (editMode.value) { editMode.value = false; return }
+    if (fabMenuOpen.value) { fabMenuOpen.value = false; return }
     showEngineMenu.value = false
     return
   }
@@ -140,9 +141,19 @@ function handleDocClick(e) {
   if (showEngineMenu.value && !e.target.closest('.engine-anchor')) {
     showEngineMenu.value = false
   }
+  // Close the floating action cluster when clicking outside
+  if (fabMenuOpen.value && !e.target.closest('.fab-cluster')) {
+    fabMenuOpen.value = false
+  }
   if (!editMode.value) return
   // Clicking a card or inside a modal keeps edit mode; blank space exits.
-  if (e.target.closest('.card') || e.target.closest('.modal-overlay') || e.target.closest('.fab')) return
+  if (
+    e.target.closest('.card') ||
+    e.target.closest('.modal-overlay') ||
+    e.target.closest('.settings-drawer') ||
+    e.target.closest('.drawer-catch') ||
+    e.target.closest('.fab-cluster')
+  ) return
   editMode.value = false
 }
 
@@ -196,8 +207,22 @@ function closeEditModal() {
   editingIndex.value = -1
 }
 
-// Settings modal
+// Settings drawer
 const showSettingsModal = ref(false)
+
+// ---- Floating action cluster (pagoda menu) ----
+// The old topbar buttons collapse into one round button;
+// clicking it fans the actions out in a horizontal row.
+const fabMenuOpen = ref(false)
+
+function toggleFabMenu() {
+  fabMenuOpen.value = !fabMenuOpen.value
+}
+
+function runFabAction(fn) {
+  fabMenuOpen.value = false
+  fn()
+}
 
 // ---- View mode (grid / alpha) ----
 const viewMode = ref(loadView())
@@ -313,66 +338,6 @@ onUnmounted(() => {
     <div class="noise"></div>
   </div>
 
-  <!-- Topbar -->
-  <header class="topbar">
-    <div class="topbar-inner">
-      <div class="brand">
-        <span class="brand-logo">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="10"/>
-            <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>
-          </svg>
-        </span>
-        <span class="brand-name">导航</span>
-      </div>
-      <div class="topbar-actions">
-        <button class="icon-btn" :title="viewMode === 'alpha' ? '切换到网格视图' : '切换到字母视图'" @click="toggleViewMode">
-          <svg v-if="viewMode === 'alpha'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="3" y="3" width="7" height="7" rx="1.5"/>
-            <rect x="14" y="3" width="7" height="7" rx="1.5"/>
-            <rect x="3" y="14" width="7" height="7" rx="1.5"/>
-            <rect x="14" y="14" width="7" height="7" rx="1.5"/>
-          </svg>
-          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M4 7h9"/>
-            <path d="M4 12h7"/>
-            <path d="M4 17h5"/>
-            <path d="M17 6v12"/>
-            <path d="M14 15l3 3 3-3"/>
-          </svg>
-        </button>
-        <button class="icon-btn" :title="isLight ? '切换到暗色' : '切换到亮色'" @click="toggleTheme">
-          <svg v-if="isLight" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-          </svg>
-          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="4"/>
-            <line x1="12" y1="2" x2="12" y2="4"/>
-            <line x1="12" y1="20" x2="12" y2="22"/>
-            <line x1="4.93" y1="4.93" x2="6.34" y2="6.34"/>
-            <line x1="17.66" y1="17.66" x2="19.07" y2="19.07"/>
-            <line x1="2" y1="12" x2="4" y2="12"/>
-            <line x1="20" y1="12" x2="22" y2="12"/>
-            <line x1="4.93" y1="19.07" x2="6.34" y2="17.66"/>
-            <line x1="17.66" y1="6.34" x2="19.07" y2="4.93"/>
-          </svg>
-        </button>
-        <button class="icon-btn" title="新增服务" @click="openAddModal">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-            <line x1="12" y1="5" x2="12" y2="19"/>
-            <line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-        </button>
-        <button class="icon-btn" title="设置" @click="showSettingsModal = true">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="3"/>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-          </svg>
-        </button>
-      </div>
-    </div>
-  </header>
-
   <!-- Page -->
   <main class="page">
     <section class="hero">
@@ -450,21 +415,79 @@ onUnmounted(() => {
     />
   </main>
 
-  <!-- Windmill FAB — random Bing wallpaper -->
-  <button
-    class="fab"
-    :class="{ loading: fabLoading }"
-    title="随机壁纸（Bing 每日图）"
-    @click.stop="randomWallpaper"
-  >
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M12 12c-2 0-3.5-1.5-3.5-3.5S10 5 12 5V12z" fill="currentColor" stroke="none" opacity="0.9"/>
-      <path d="M12 12c0 2-1.5 3.5-3.5 3.5S5 14 5 12H12z" fill="currentColor" stroke="none" opacity="0.65"/>
-      <path d="M12 12c2 0 3.5 1.5 3.5 3.5S14 19 12 19V12z" fill="currentColor" stroke="none" opacity="0.9"/>
-      <path d="M12 12c0-2 1.5-3.5 3.5-3.5S19 10 19 12H12z" fill="currentColor" stroke="none" opacity="0.65"/>
-      <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/>
-    </svg>
-  </button>
+  <!-- Floating action cluster: windmill + pagoda menu -->
+  <div class="fab-cluster">
+    <!-- Windmill — random Bing wallpaper -->
+    <button
+      class="fab fab-windmill"
+      :class="{ loading: fabLoading }"
+      title="随机壁纸（Bing 每日图）"
+      @click.stop="randomWallpaper"
+    >
+      <img src="/windmill.svg" alt="" draggable="false">
+    </button>
+
+    <!-- Pagoda menu: actions fan out in a horizontal row -->
+    <div class="fab-anchor">
+      <transition name="fab-row">
+        <div v-if="fabMenuOpen" class="fab-row" @click.stop>
+          <button class="icon-btn fab-item" :title="viewMode === 'alpha' ? '切换到网格视图' : '切换到字母视图'" @click="runFabAction(toggleViewMode)">
+            <svg v-if="viewMode === 'alpha'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+              <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+              <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+              <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+            </svg>
+            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 7h9"/>
+              <path d="M4 12h7"/>
+              <path d="M4 17h5"/>
+              <path d="M17 6v12"/>
+              <path d="M14 15l3 3 3-3"/>
+            </svg>
+          </button>
+          <button class="icon-btn fab-item" :title="isLight ? '切换到暗色' : '切换到亮色'" @click="runFabAction(toggleTheme)">
+            <svg v-if="isLight" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+            </svg>
+            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="4"/>
+              <line x1="12" y1="2" x2="12" y2="4"/>
+              <line x1="12" y1="20" x2="12" y2="22"/>
+              <line x1="4.93" y1="4.93" x2="6.34" y2="6.34"/>
+              <line x1="17.66" y1="17.66" x2="19.07" y2="19.07"/>
+              <line x1="2" y1="12" x2="4" y2="12"/>
+              <line x1="20" y1="12" x2="22" y2="12"/>
+              <line x1="4.93" y1="19.07" x2="6.34" y2="17.66"/>
+              <line x1="17.66" y1="6.34" x2="19.07" y2="4.93"/>
+            </svg>
+          </button>
+          <button class="icon-btn fab-item" title="新增服务" @click="runFabAction(openAddModal)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+              <line x1="12" y1="5" x2="12" y2="19"/>
+              <line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+          </button>
+          <button class="icon-btn fab-item" title="设置" @click="runFabAction(() => { showSettingsModal = true })">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+          </button>
+        </div>
+      </transition>
+      <button
+        class="fab fab-main"
+        :class="{ open: fabMenuOpen }"
+        :title="fabMenuOpen ? '收起菜单' : '展开菜单'"
+        @click.stop="toggleFabMenu"
+      >
+        <span class="h-line"></span>
+        <span class="h-line"></span>
+        <span class="h-line"></span>
+      </button>
+    </div>
+  </div>
 
   <EditModal
     v-if="config"

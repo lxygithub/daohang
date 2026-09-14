@@ -35,8 +35,8 @@ const host = computed(() => {
 })
 
 // ---- click: open service / in edit mode open editor ----
-// suppressNextClick: the click right after a long-press that fired edit mode
-// belongs to the same gesture and must be swallowed.
+// suppressNextClick: the click right after a touch long-press that fired edit
+// mode belongs to the same gesture and must be swallowed.
 let suppressNextClick = false
 
 function handleClick(e) {
@@ -63,38 +63,21 @@ function handleDelete(e) {
   window.dispatchEvent(event)
 }
 
-// ---- long-press → edit mode (mouse & touch) ----
-let pressTimer = null
-let pressStart = null
-
+// ---- right-click → edit mode (desktop); touch long-press covers mobile ----
 function fireEditMode() {
   suppressNextClick = true
   setEditMode(true)
   if (navigator.vibrate) navigator.vibrate(20)
 }
 
-function cancelPress() {
-  clearTimeout(pressTimer)
-  pressTimer = null
-}
-
-function handleMouseDown(e) {
-  suppressNextClick = false
-  if (editMode.value) return // edit mode: HTML5 drag covers desktop reorder
-  if (e.button !== 0) return
-  pressStart = { x: e.clientX, y: e.clientY }
-  clearTimeout(pressTimer)
-  pressTimer = setTimeout(fireEditMode, 480)
-}
-
-function handleMouseMove(e) {
-  if (!pressStart || pressTimer === null) return
-  if (Math.hypot(e.clientX - pressStart.x, e.clientY - pressStart.y) > 6) cancelPress()
-}
-
-function handleMouseUp() {
-  cancelPress()
-  pressStart = null
+function handleContextMenu(e) {
+  e.preventDefault()
+  if (editMode.value) {
+    // Already editing: right-click opens this card's editor directly
+    openEditModal(props.index)
+    return
+  }
+  fireEditMode()
 }
 
 // ---- Drag & Drop (HTML5, desktop) ----
@@ -134,8 +117,15 @@ function handleDrop(e) {
   window.dispatchEvent(event)
 }
 
-// ---- Touch: long-press drag (mobile, edit mode) / long-press → edit mode ----
+// ---- Touch: long-press → edit mode (mobile) / long-press drag (edit mode) ----
 let touchDrag = null
+let pressTimer = null
+let pressStart = null
+
+function cancelPress() {
+  clearTimeout(pressTimer)
+  pressTimer = null
+}
 
 function handleTouchStart(e) {
   if (e.touches.length !== 1) return
@@ -206,11 +196,7 @@ function handleTouchEnd() {
     :data-index="index"
     :title="service.url"
     @click="handleClick"
-    @mousedown="handleMouseDown"
-    @mousemove="handleMouseMove"
-    @mouseup="handleMouseUp"
-    @mouseleave="handleMouseUp"
-    @contextmenu.prevent
+    @contextmenu.prevent="handleContextMenu"
     @dragstart="handleDragStart"
     @dragend="handleDragEnd"
     @dragover="handleDragOver"
@@ -222,34 +208,38 @@ function handleTouchEnd() {
     @touchend="handleTouchEnd"
     @touchcancel="handleTouchEnd"
   >
-    <div class="card-icon" :style="{ '--h': hue }">
-      <img
-        v-if="service.iconType === 'url' && service.icon"
-        :src="service.icon"
-        :alt="service.name"
-      >
-      <span v-else-if="service.iconType === 'emoji'" class="card-icon-emoji">{{ service.icon }}</span>
-      <span v-else v-html="ICONS[service.icon] || ICONS.server"></span>
+    <div class="icon-wrap">
+      <div class="card-icon" :style="{ '--h': hue }">
+        <img
+          v-if="service.iconType === 'url' && service.icon"
+          :src="service.icon"
+          :alt="service.name"
+        >
+        <span v-else-if="service.iconType === 'emoji'" class="card-icon-emoji">{{ service.icon }}</span>
+        <span v-else v-html="ICONS[service.icon] || ICONS.server"></span>
+      </div>
+
+      <!-- Edit-mode overlay: delete top-right, edit center (anchored to the icon) -->
+      <template v-if="editMode">
+        <button class="edit-badge edit-x" type="button" title="删除" @click.stop="handleDelete">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round">
+            <line x1="7" y1="7" x2="17" y2="17"/>
+            <line x1="17" y1="7" x2="7" y2="17"/>
+          </svg>
+        </button>
+        <button class="edit-badge edit-pencil" type="button" title="编辑" @click.stop="handleEdit">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 20h9"/>
+            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
+          </svg>
+        </button>
+      </template>
     </div>
     <div class="card-meta">
       <div class="card-name">{{ service.name }}</div>
       <div class="card-host">{{ host }}</div>
     </div>
 
-    <!-- Edit-mode overlay: delete top-right, edit center -->
-    <template v-if="editMode">
-      <button class="edit-badge edit-x" type="button" title="删除" @click.stop="handleDelete">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round">
-          <line x1="6" y1="6" x2="18" y2="18"/>
-          <line x1="18" y1="6" x2="6" y2="18"/>
-        </svg>
-      </button>
-      <button class="edit-badge edit-pencil" type="button" title="编辑" @click.stop="handleEdit">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-          <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-        </svg>
-      </button>
-    </template>
+    <!-- Edit-mode overlay moved inside .icon-wrap (anchored to the icon) -->
   </div>
 </template>

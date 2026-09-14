@@ -325,23 +325,23 @@ function pickImport() {
   input.click()
 }
 
-function handleOverlayClick(e) {
-  if (e.target === e.currentTarget) return
-}
 </script>
 
 <template>
-  <div class="modal-overlay" :class="{ active: visible }" @click="handleOverlayClick">
-    <div class="modal" style="max-width:480px">
-      <div class="modal-header">
-        <h2>设置</h2>
-        <button class="modal-close" title="关闭" @click="emit('close')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
-            <line x1="18" y1="6" x2="6" y2="18"/>
-            <line x1="6" y1="6" x2="18" y2="18"/>
-          </svg>
-        </button>
-      </div>
+  <!-- 透明点击拦截层：点击抽屉外任意处关闭，但不遮挡/变暗主页面 -->
+  <div class="drawer-catch" :class="{ open: visible }" @click="emit('close')"></div>
+
+  <!-- 右侧滑出设置抽屉 -->
+  <aside class="settings-drawer" :class="{ open: visible }" role="dialog" aria-label="设置">
+    <div class="drawer-header">
+      <h2>设置</h2>
+      <button class="modal-close" title="关闭" @click="emit('close')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+          <line x1="18" y1="6" x2="6" y2="18"/>
+          <line x1="6" y1="6" x2="18" y2="18"/>
+        </svg>
+      </button>
+    </div>
 
       <div class="form-group">
         <label>背景主题</label>
@@ -420,7 +420,7 @@ function handleOverlayClick(e) {
           </label>
           <label class="slider-row">
             <span>图标大小</span>
-            <input type="range" min="48" max="96" step="4" v-model.number="grid.size" @change="onGridChange">
+            <input type="range" min="48" max="140" step="4" v-model.number="grid.size" @change="onGridChange">
             <b>{{ grid.size }}px</b>
           </label>
           <p class="settings-hint">图标超出屏幕时按手机桌面分页，可左右滑动切换</p>
@@ -487,10 +487,9 @@ function handleOverlayClick(e) {
         <p class="settings-hint">导出包含全部服务与背景设置，导入将覆盖当前数据</p>
       </div>
 
-      <div class="modal-footer">
+      <div class="drawer-footer">
         <button class="btn-text ghost" @click="resetDefault">恢复默认</button>
         <button class="btn-text primary" @click="confirm">完成</button>
       </div>
-    </div>
-  </div>
+  </aside>
 </template>
