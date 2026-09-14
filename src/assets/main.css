@@ -661,6 +661,57 @@ input { font-family: inherit; }
   font-size: 0.78rem;
 }
 
+/* Trash */
+.trash-list {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.02);
+}
+.trash-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.trash-item:last-child { border-bottom: none; }
+.trash-name {
+  font-size: 0.86rem;
+  font-weight: 600;
+  flex-shrink: 0;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.trash-host {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.76rem;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.trash-actions { display: flex; gap: 6px; flex-shrink: 0; }
+.trash-btn {
+  padding: 4px 12px;
+  font-size: 0.78rem;
+  border-radius: 8px;
+}
+.trash-btn.danger:hover {
+  color: var(--danger);
+  border-color: rgba(248, 113, 113, 0.4);
+}
+.trash-empty {
+  margin-top: 10px;
+  width: 100%;
+  font-size: 0.8rem;
+  padding: 7px 0;
+}
+
 /* ============================================================
    Loading / error state
    ============================================================ */

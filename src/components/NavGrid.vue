@@ -10,6 +10,7 @@ const props = defineProps({
 const emit = defineEmits(['reordered'])
 const ensureVerified = inject('ensureVerified')
 const showToast = inject('showToast')
+const configRef = inject('config')
 
 // ---- persisted local prefs ----
 function loadJSON(key, fallback) {
@@ -125,11 +126,16 @@ function handleDropReorder(e) {
 function handleDeleteService(e) {
   const { index } = e.detail
   const name = props.services[index].name
-  if (!confirm(`确定删除「${name}」？`)) return
+  if (!confirm(`确定删除「${name}」？可在设置中恢复`)) return
   ensureVerified(() => {
-    props.services.splice(index, 1)
+    const [item] = props.services.splice(index, 1)
+    // 移入回收站（保留最近 30 条）
+    if (item && configRef?.value) {
+      const cfg = configRef.value
+      cfg.trash = [item, ...(cfg.trash || [])].slice(0, 30)
+    }
     emit('reordered')
-    showToast('已删除')
+    showToast('已移入回收站')
   })
 }
 

@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch, inject } from 'vue'
+import { ref, watch, computed, inject } from 'vue'
 import { BG_PRESETS } from '../data/presets'
 
 const props = defineProps({
@@ -126,6 +126,47 @@ function pickWallpaper() {
     reader.readAsDataURL(file)
   }
   input.click()
+}
+
+// ---- 回收站 ----
+const trashItems = computed(() => configRef?.value?.trash || [])
+
+function restoreTrash(i) {
+  ensureVerified(() => {
+    const cfg = configRef?.value
+    if (!cfg) return
+    const [item] = cfg.trash.splice(i, 1)
+    if (item) {
+      if (cfg.services.some(s => s.id === item.id)) {
+        item.id = item.id + '-r' + Date.now()
+      }
+      cfg.services.push(item)
+      saveConfig()
+      showToast(`已恢复「${item.name}」`)
+    }
+  })
+}
+
+function purgeTrash(i) {
+  ensureVerified(() => {
+    const cfg = configRef?.value
+    if (!cfg) return
+    const [item] = cfg.trash.splice(i, 1)
+    if (item) {
+      saveConfig()
+      showToast('已永久删除')
+    }
+  })
+}
+
+function emptyTrash() {
+  ensureVerified(() => {
+    const cfg = configRef?.value
+    if (!cfg || !cfg.trash?.length) return
+    cfg.trash = []
+    saveConfig()
+    showToast('回收站已清空')
+  })
 }
 
 // ---- 导入 / 导出 ----
@@ -255,6 +296,21 @@ function handleOverlayClick(e) {
           <input type="checkbox" v-model="sortUsage" @change="onSortUsageChange">
           <span class="switch" aria-hidden="true"></span>
         </label>
+      </div>
+
+      <div v-if="trashItems.length" class="form-group">
+        <label>回收站 <span class="label-hint">（最多保留 30 条）</span></label>
+        <div class="trash-list">
+          <div v-for="(t, i) in trashItems" :key="t.id + '-' + i" class="trash-item">
+            <span class="trash-name">{{ t.name }}</span>
+            <span class="trash-host">{{ t.url }}</span>
+            <div class="trash-actions">
+              <button class="btn-text ghost trash-btn" @click="restoreTrash(i)">恢复</button>
+              <button class="btn-text ghost trash-btn danger" @click="purgeTrash(i)">删除</button>
+            </div>
+          </div>
+        </div>
+        <button class="btn-text ghost trash-empty" @click="emptyTrash">清空回收站</button>
       </div>
 
       <div class="form-group">
