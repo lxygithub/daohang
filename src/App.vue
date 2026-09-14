@@ -21,6 +21,25 @@ const timeText = ref('')
 const secText = ref('')
 const dateText = ref('')
 const greeting = ref('')
+const quote = ref(null)
+const quoteLoading = ref(false)
+
+// 一言
+async function fetchQuote() {
+  if (quoteLoading.value) return
+  quoteLoading.value = true
+  try {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 3500)
+    const res = await fetch('https://v1.hitokoto.cn/?c=i&c=k&c=d', { signal: ctrl.signal })
+    clearTimeout(timer)
+    if (!res.ok) return
+    const d = await res.json()
+    if (d.hitokoto) quote.value = { text: d.hitokoto, from: d.from || '' }
+  } catch {} finally {
+    quoteLoading.value = false
+  }
+}
 
 function updateClock() {
   const now = new Date()
@@ -133,6 +152,7 @@ onMounted(async () => {
   window.addEventListener('keydown', handleKeydown)
   // 会话内记住验证状态，刷新无需重复输密码
   if (getStoredPassword()) verified.value = true
+  fetchQuote()
   await loadConfig()
   applyBackground()
 })
@@ -212,6 +232,15 @@ onUnmounted(() => {
         >
         <kbd v-if="!searchQuery">/</kbd>
       </form>
+      <div
+        v-if="quote"
+        class="quote"
+        title="点击换一句"
+        @click="fetchQuote"
+      >
+        <span class="quote-text">「{{ quote.text }}」</span>
+        <span v-if="quote.from" class="quote-from">—— {{ quote.from }}</span>
+      </div>
     </section>
 
     <div v-if="loading" class="state-wrap">

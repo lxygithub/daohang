@@ -427,6 +427,115 @@ input { font-family: inherit; }
 }
 
 /* ============================================================
+   Hitokoto quote
+   ============================================================ */
+.quote {
+  margin-top: 22px;
+  max-width: 560px;
+  color: var(--text-3);
+  font-size: 0.85rem;
+  line-height: 1.7;
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.2s;
+}
+.quote:hover { color: var(--text-2); }
+.quote-from { margin-left: 6px; opacity: 0.8; }
+
+/* ============================================================
+   Card groups
+   ============================================================ */
+.group-section { margin-bottom: 26px; }
+.group-section:last-child { margin-bottom: 0; }
+
+.group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 2px 12px;
+  border: none;
+  background: none;
+  color: var(--text-2);
+  font-size: 0.88rem;
+  font-weight: 600;
+  letter-spacing: 1px;
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.2s;
+}
+.group-header:hover { color: var(--text); }
+
+.group-chevron {
+  width: 14px;
+  height: 14px;
+  color: var(--text-3);
+  transition: transform 0.25s var(--ease);
+}
+.group-chevron.collapsed { transform: rotate(-90deg); }
+
+.group-count {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text-3);
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+/* ============================================================
+   Settings — switch toggle & backup row
+   ============================================================ */
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  user-select: none;
+}
+.switch-label { font-size: 0.88rem; color: var(--text); }
+.switch-row input { display: none; }
+.switch {
+  flex-shrink: 0;
+  width: 40px;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  position: relative;
+  transition: background 0.2s;
+}
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.22s var(--ease);
+}
+.switch-row input:checked + .switch {
+  background: var(--accent-grad);
+}
+.switch-row input:checked + .switch::after {
+  transform: translateX(18px);
+}
+
+.backup-row { display: flex; gap: 10px; }
+.backup-row .btn-text { flex: 1; }
+
+.label-hint {
+  color: var(--text-3);
+  font-weight: 400;
+  font-size: 0.78rem;
+}
+
+/* ============================================================
    Loading / error state
    ============================================================ */
 .state-wrap {

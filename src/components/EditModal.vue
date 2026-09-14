@@ -15,6 +15,7 @@ const showToast = inject('showToast')
 
 const name = ref('')
 const url = ref('')
+const group = ref('')
 const iconUrl = ref('')
 const selectedIcon = ref('server')
 const faviconPreview = ref('')
@@ -31,6 +32,16 @@ const generatingText = ref(false)
 const isEditing = computed(() => props.editIndex >= 0)
 const modalTitle = computed(() => isEditing.value ? '编辑项目' : '新增项目')
 
+// 分组选项（去重）
+const groupOptions = computed(() => {
+  const set = new Set()
+  for (const s of props.services) {
+    const g = (s.group || '').trim()
+    if (g) set.add(g)
+  }
+  return [...set]
+})
+
 watch(() => props.visible, (val) => {
   if (!val) return
   iconMode.value = 'svg'
@@ -45,6 +56,7 @@ watch(() => props.visible, (val) => {
     if (svc) {
       name.value = svc.name
       url.value = svc.url
+      group.value = svc.group || ''
       iconUrl.value = svc.iconType === 'url' ? svc.icon : ''
       if (svc.iconType === 'emoji') {
         iconMode.value = 'emoji'
@@ -56,6 +68,7 @@ watch(() => props.visible, (val) => {
   } else {
     name.value = ''
     url.value = ''
+    group.value = ''
   }
 })
 
@@ -220,6 +233,8 @@ function save() {
     name: n,
     url: u,
   }
+  const g = group.value.trim()
+  if (g) svc.group = g
 
   if (iu) {
     svc.iconType = 'url'
@@ -278,6 +293,19 @@ function handleOverlayClick(e) {
             :disabled="fetchingFavicon"
           >{{ fetchingFavicon ? '获取中…' : '图标' }}</button>
         </div>
+      </div>
+      <div class="form-group">
+        <label>分组 <span class="label-hint">（可选，同组服务归类显示）</span></label>
+        <input
+          type="text"
+          class="form-input"
+          v-model="group"
+          list="group-options"
+          placeholder="如：开发工具 / 媒体 / 网络"
+        >
+        <datalist id="group-options">
+          <option v-for="g in groupOptions" :key="g" :value="g" />
+        </datalist>
       </div>
       <div class="form-group">
         <label>图标</label>
