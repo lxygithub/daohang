@@ -25,6 +25,8 @@ const collapsed = ref(loadJSON('nav_collapsed', {}))
 const clicks = ref(loadJSON('nav_clicks', {}))
 const SORT_KEY = 'nav_sort_usage'
 const sortUsage = ref(localStorage.getItem(SORT_KEY) === '1')
+const LAYOUT_KEY = 'nav_layout'
+const layout = ref(localStorage.getItem(LAYOUT_KEY) || 'card')
 
 function saveCollapsed() {
   try { localStorage.setItem('nav_collapsed', JSON.stringify(collapsed.value)) } catch {}
@@ -100,6 +102,10 @@ function handleUsageSortChanged(e) {
   sortUsage.value = !!e.detail
 }
 
+function handleLayoutChanged(e) {
+  layout.value = e.detail === 'list' ? 'list' : 'card'
+}
+
 function handleDropReorder(e) {
   const { srcIndex, targetIndex } = e.detail
   ensureVerified(() => {
@@ -132,6 +138,7 @@ onMounted(() => {
   window.addEventListener('delete-service', handleDeleteService)
   window.addEventListener('open-first-match', handleOpenFirstMatch)
   window.addEventListener('usage-sort-changed', handleUsageSortChanged)
+  window.addEventListener('layout-changed', handleLayoutChanged)
 })
 
 onUnmounted(() => {
@@ -139,6 +146,7 @@ onUnmounted(() => {
   window.removeEventListener('delete-service', handleDeleteService)
   window.removeEventListener('open-first-match', handleOpenFirstMatch)
   window.removeEventListener('usage-sort-changed', handleUsageSortChanged)
+  window.removeEventListener('layout-changed', handleLayoutChanged)
 })
 </script>
 
@@ -152,7 +160,7 @@ onUnmounted(() => {
   </div>
 
   <!-- 搜索模式 / 未分组：平铺网格 -->
-  <div v-else-if="props.filter || !hasGroups" class="card-grid">
+  <div v-else-if="props.filter || !hasGroups" class="card-grid" :class="{ 'layout-list': layout === 'list' }">
     <NavCard
       v-for="svc in visibleFlat"
       :key="svc.id"
@@ -172,7 +180,7 @@ onUnmounted(() => {
         <span class="group-name">{{ sec.name || '未分组' }}</span>
         <span class="group-count">{{ sec.items.length }}</span>
       </button>
-      <div v-show="!collapsed[sec.name]" class="card-grid">
+      <div v-show="!collapsed[sec.name]" class="card-grid" :class="{ 'layout-list': layout === 'list' }">
         <NavCard
           v-for="svc in sec.items"
           :key="svc.id"

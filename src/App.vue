@@ -16,6 +16,22 @@ const { message: toastMessage, visible: toastVisible, showToast } = useToast()
 const searchQuery = ref('')
 const searchInputRef = ref(null)
 
+// Theme
+const THEME_KEY = 'nav_theme'
+const isLight = ref(false)
+
+function applyTheme(light) {
+  isLight.value = light
+  document.documentElement.dataset.theme = light ? 'light' : 'dark'
+  document.querySelector('meta[name="theme-color"]')
+    ?.setAttribute('content', light ? '#eef1f7' : '#0d1017')
+}
+
+function toggleTheme() {
+  applyTheme(!isLight.value)
+  try { localStorage.setItem(THEME_KEY, isLight.value ? 'light' : 'dark') } catch {}
+}
+
 // Clock & greeting
 const timeText = ref('')
 const secText = ref('')
@@ -132,11 +148,19 @@ function closeEditModal() {
 // Settings modal
 const showSettingsModal = ref(false)
 
-// Background
+// Background & wallpaper
 function applyBackground() {
-  if (config.value?.background) {
-    document.body.style.background = config.value.background.value
+  const bg = config.value?.background
+  const wp = config.value?.wallpaper
+  const decor = document.querySelector('.bg-decor')
+  if (wp && wp.type !== 'none' && wp.value) {
+    document.body.style.background = `#0d1017 url("${wp.value}") center / cover no-repeat fixed`
+    decor?.classList.add('dimmed')
+    return
   }
+  decor?.classList.remove('dimmed')
+  const isDefault = !bg || !bg.value || bg.value === '#0d1017'
+  document.body.style.background = isDefault ? '' : bg.value
 }
 
 // Provide shared state to children
@@ -150,8 +174,12 @@ onMounted(async () => {
   updateClock()
   clockTimer = setInterval(updateClock, 1000)
   window.addEventListener('keydown', handleKeydown)
+  window.addEventListener('apply-background', applyBackground)
   // 会话内记住验证状态，刷新无需重复输密码
   if (getStoredPassword()) verified.value = true
+  let savedLight = false
+  try { savedLight = localStorage.getItem(THEME_KEY) === 'light' } catch {}
+  applyTheme(savedLight)
   fetchQuote()
   await loadConfig()
   applyBackground()
@@ -162,6 +190,7 @@ let clockTimer = null
 onUnmounted(() => {
   if (clockTimer) clearInterval(clockTimer)
   window.removeEventListener('keydown', handleKeydown)
+  window.removeEventListener('apply-background', applyBackground)
 })
 </script>
 
@@ -187,6 +216,22 @@ onUnmounted(() => {
         <span class="brand-name">导航</span>
       </div>
       <div class="topbar-actions">
+        <button class="icon-btn" :title="isLight ? '切换到暗色' : '切换到亮色'" @click="toggleTheme">
+          <svg v-if="isLight" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="4"/>
+            <line x1="12" y1="2" x2="12" y2="4"/>
+            <line x1="12" y1="20" x2="12" y2="22"/>
+            <line x1="4.93" y1="4.93" x2="6.34" y2="6.34"/>
+            <line x1="17.66" y1="17.66" x2="19.07" y2="19.07"/>
+            <line x1="2" y1="12" x2="4" y2="12"/>
+            <line x1="20" y1="12" x2="22" y2="12"/>
+            <line x1="4.93" y1="19.07" x2="6.34" y2="17.66"/>
+            <line x1="17.66" y1="6.34" x2="19.07" y2="4.93"/>
+          </svg>
+        </button>
         <button class="icon-btn" title="新增服务" @click="openAddModal">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
             <line x1="12" y1="5" x2="12" y2="19"/>

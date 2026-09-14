@@ -16,10 +16,17 @@ const saveConfig = inject('saveConfig')
 const customValue = ref('')
 const SORT_KEY = 'nav_sort_usage'
 const sortUsage = ref(localStorage.getItem(SORT_KEY) === '1')
+const LAYOUT_KEY = 'nav_layout'
+const layout = ref(localStorage.getItem(LAYOUT_KEY) || 'card')
+const wallpaperUrl = ref('')
 
 watch(() => props.visible, (val) => {
   if (val && props.background) {
     customValue.value = props.background.value || ''
+  }
+  if (val) {
+    const wp = configRef?.value?.wallpaper
+    wallpaperUrl.value = wp && wp.type === 'url' ? (wp.value || '') : ''
   }
 })
 
@@ -61,6 +68,64 @@ function confirm() {
 function onSortUsageChange() {
   localStorage.setItem(SORT_KEY, sortUsage.value ? '1' : '0')
   window.dispatchEvent(new CustomEvent('usage-sort-changed', { detail: sortUsage.value }))
+}
+
+// ---- 布局切换 ----
+function setLayout(v) {
+  layout.value = v
+  localStorage.setItem(LAYOUT_KEY, v)
+  window.dispatchEvent(new CustomEvent('layout-changed', { detail: v }))
+}
+
+// ---- 壁纸 ----
+function applyWallpaper(value, type) {
+  ensureVerified(() => {
+    const cfg = configRef?.value
+    if (!cfg) return
+    cfg.wallpaper = value ? { type, value } : { type: 'none', value: '' }
+    saveConfig()
+    window.dispatchEvent(new CustomEvent('apply-background'))
+    showToast(value ? '壁纸已更新' : '壁纸已清除')
+  })
+}
+
+function confirmWallpaperUrl() {
+  const u = wallpaperUrl.value.trim()
+  applyWallpaper(u || '', u ? 'url' : 'none')
+}
+
+function clearWallpaper() {
+  wallpaperUrl.value = ''
+  applyWallpaper('', 'none')
+}
+
+function pickWallpaper() {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = 'image/*'
+  input.onchange = () => {
+    const file = input.files?.[0]
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      const img = new Image()
+      img.onload = () => {
+        // 压缩到最长边 1440，减少 D1 存储体积
+        const MAX = 1440
+        const scale = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight))
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.round(img.naturalWidth * scale)
+        canvas.height = Math.round(img.naturalHeight * scale)
+        canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height)
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.72)
+        applyWallpaper(dataUrl, 'data')
+      }
+      img.onerror = () => showToast('图片读取失败')
+      img.src = reader.result
+    }
+    reader.readAsDataURL(file)
+  }
+  input.click()
 }
 
 // ---- 导入 / 导出 ----
@@ -154,6 +219,33 @@ function handleOverlayClick(e) {
         </div>
         <input type="text" class="form-input" v-model="customValue" placeholder="自定义背景：#222 或 linear-gradient(...)">
         <p class="settings-hint">点击预设立即生效，支持任意颜色值与 CSS 渐变</p>
+      </div>
+
+      <div class="form-group">
+        <label>布局</label>
+        <div class="seg-row">
+          <button class="seg-btn" :class="{ active: layout === 'card' }" type="button" @click="setLayout('card')">卡片</button>
+          <button class="seg-btn" :class="{ active: layout === 'list' }" type="button" @click="setLayout('list')">列表</button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>壁纸</label>
+        <div class="input-row">
+          <input
+            type="text"
+            class="form-input"
+            v-model="wallpaperUrl"
+            placeholder="图片 URL，留空不使用"
+            @keydown.enter="confirmWallpaperUrl"
+          >
+          <button class="btn-text fetch-btn" @click="confirmWallpaperUrl">应用</button>
+        </div>
+        <div class="backup-row" style="margin-top:10px">
+          <button class="btn-text ghost" @click="pickWallpaper">上传图片</button>
+          <button class="btn-text ghost" @click="clearWallpaper">清除壁纸</button>
+        </div>
+        <p class="settings-hint">上传自动压缩至 1440px；启用壁纸后极光背景会淡出</p>
       </div>
 
       <div class="form-group">
