@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, provide } from 'vue'
 import { useConfig, getStoredPassword, AUTH_KEY } from './composables/useConfig'
 import { useToast } from './composables/useToast'
-import { loadView, saveView, emitView } from './composables/usePrefs'
+import { loadView, saveView, emitView, applyFont } from './composables/usePrefs'
 import NavGrid from './components/NavGrid.vue'
 import EditModal from './components/EditModal.vue'
 import SettingsModal from './components/SettingsModal.vue'
@@ -311,6 +311,7 @@ onMounted(async () => {
   let savedLight = false
   try { savedLight = localStorage.getItem(THEME_KEY) === 'light' } catch {}
   applyTheme(savedLight)
+  applyFont()
   fetchQuote()
   await loadConfig()
   applyBackground()
@@ -386,7 +387,6 @@ onUnmounted(() => {
           @blur="e => !e.target.value && e.target.setAttribute('readonly', '')"
           @keydown.enter="handleSearchEnter"
         >
-        <kbd v-if="!searchQuery">/</kbd>
       </form>
       <div
         v-if="quote"

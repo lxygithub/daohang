@@ -70,16 +70,13 @@ html[data-theme="light"] .card-icon {
     hsl(var(--h, 228), 62%, 45% / 0.08));
 }
 
-html[data-theme="light"] .icon-tabs,
 html[data-theme="light"] .group-count,
 html[data-theme="light"] .switch,
 html[data-theme="light"] .modal-close,
 html[data-theme="light"] .icon-picker-item,
-html[data-theme="light"] .emoji-picker-item,
 html[data-theme="light"] .empty-hint {
   background: rgba(15, 23, 42, 0.05);
 }
-html[data-theme="light"] .icon-tab.active { background: rgba(15, 23, 42, 0.09); }
 html[data-theme="light"] .color-input,
 html[data-theme="light"] .form-input,
 html[data-theme="light"] .icon-picker-container {
@@ -116,8 +113,7 @@ html[data-theme="light"] ::selection { background: rgba(86, 104, 238, 0.25); col
 .card-grid.layout-list .card-icon { width: 38px; height: 38px; border-radius: 10px; }
 .card-grid.layout-list .card-icon svg { width: 18px; height: 18px; }
 .card-grid.layout-list .card-icon img { width: 21px; height: 21px; }
-.card-grid.layout-list .card-icon-emoji { font-size: 19px; }
-.card-grid.layout-list .card-name { font-size: 0.9rem; }
+.card-grid.layout-list .card-name { font-weight: 600; }
 .card-grid.layout-list .card-host { margin-top: 1px; }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -284,16 +280,16 @@ input { font-family: inherit; }
 .hero-meta .sep { margin: 0 8px; color: var(--text-3); }
 .hero-meta .greeting { color: var(--accent); font-weight: 600; }
 
-/* Search */
+/* Search — 2× the original footprint */
 .search-box {
   margin-top: 36px;
-  width: min(560px, 100%);
+  width: min(1120px, 100%);
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 18px;
-  height: 54px;
-  border-radius: 27px;
+  gap: 16px;
+  padding: 0 34px;
+  height: 108px;
+  border-radius: 54px;
   background: var(--surface);
   border: 1px solid var(--border);
   backdrop-filter: blur(14px);
@@ -306,8 +302,8 @@ input { font-family: inherit; }
   background: var(--surface-hover);
 }
 .search-box svg {
-  width: 18px;
-  height: 18px;
+  width: 22px;
+  height: 22px;
   color: var(--text-3);
   flex-shrink: 0;
 }
@@ -318,18 +314,7 @@ input { font-family: inherit; }
   outline: none;
   background: transparent;
   color: var(--text);
-  font-size: 0.98rem;
-}
-.search-box input::placeholder { color: var(--text-3); }
-.search-box kbd {
-  flex-shrink: 0;
-  padding: 2px 9px;
-  border-radius: 7px;
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text-3);
-  font-family: inherit;
-  font-size: 0.78rem;
+  font-size: 1.3rem;
 }
 
 /* ============================================================
@@ -405,12 +390,31 @@ input { font-family: inherit; }
 }
 .card:hover .card-icon { transform: scale(1.06) rotate(-2deg); }
 .card-icon svg { width: 22px; height: 22px; }
-.card-icon-emoji { font-size: 24px; line-height: 1; }
 .card-icon img {
-  width: 26px;
-  height: 26px;
+  width: 62%;
+  height: 62%;
   object-fit: contain;
   border-radius: 6px;
+}
+
+/* Solid-color text icon — fallback when no icon was fetched/uploaded.
+   The tile switches from translucent glass to a solid hue so the
+   letter reads clearly at any size. */
+.card-icon.icon-text-mode {
+  background: hsl(var(--h, 228), 62%, 52%);
+  border-color: transparent;
+}
+html[data-theme="light"] .card-icon.icon-text-mode {
+  background: hsl(var(--h, 228), 58%, 50%);
+}
+.card-icon-text {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+  color: #fff;
+  letter-spacing: 0.5px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+  user-select: none;
 }
 
 .card-meta {
@@ -418,8 +422,10 @@ input { font-family: inherit; }
   min-width: 0;
 }
 .card-name {
-  font-size: 0.95rem;
+  font-size: var(--label-size, 15px);
   font-weight: 600;
+  color: var(--label-color, inherit);
+  text-shadow: var(--label-shadow, none);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -826,35 +832,7 @@ input { font-family: inherit; }
   padding: 10px;
 }
 
-/* Segmented tabs */
-.icon-tabs {
-  display: flex;
-  gap: 2px;
-  margin-bottom: 10px;
-  padding: 3px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border);
-}
-.icon-tab {
-  flex: 1;
-  padding: 6px 0;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text-3);
-  font-size: 0.82rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.18s, color 0.18s;
-}
-.icon-tab:hover { color: var(--text-2); }
-.icon-tab.active {
-  background: rgba(255, 255, 255, 0.12);
-  color: var(--text);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-}
-
+/* Icon picker (SVG presets; emoji picker removed) */
 .icon-picker-grid {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
@@ -889,42 +867,6 @@ input { font-family: inherit; }
   white-space: nowrap;
 }
 
-/* Emoji picker */
-.emoji-picker-grid {
-  display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  gap: 4px;
-}
-.emoji-picker-item {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 7px 2px;
-  border-radius: 9px;
-  border: 2px solid transparent;
-  background: rgba(255, 255, 255, 0.03);
-  cursor: pointer;
-  font-size: 1.35rem;
-  line-height: 1;
-  transition: background 0.15s, border-color 0.15s, transform 0.15s;
-}
-.emoji-picker-item:hover { background: rgba(255, 255, 255, 0.08); transform: scale(1.1); }
-.emoji-picker-item.selected { border-color: var(--accent); background: var(--accent-soft); }
-
-/* Text icon */
-.text-icon-config { padding: 4px 0; }
-.text-icon-row { margin-bottom: 12px; }
-.text-icon-row label {
-  display: block;
-  font-size: 0.78rem;
-  color: var(--text-2);
-  margin-bottom: 5px;
-}
-.text-color-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
 .color-input {
   width: 42px;
   height: 38px;
@@ -933,19 +875,6 @@ input { font-family: inherit; }
   border-radius: 9px;
   background: rgba(255, 255, 255, 0.04);
   cursor: pointer;
-}
-.color-text {
-  flex: 1;
-  font-size: 0.85rem !important;
-  padding: 8px 12px !important;
-}
-.text-generate-btn { width: 100%; margin-top: 4px; }
-.text-icon-preview-wrap { text-align: center; margin-top: 14px; }
-.text-icon-preview {
-  width: 64px;
-  height: 64px;
-  border-radius: 14px;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
 }
 
 /* ============================================================
@@ -1168,10 +1097,10 @@ input { font-family: inherit; }
   .card-grid { grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; }
   .card { padding: 12px 13px; gap: 10px; }
   .card-icon { width: 40px; height: 40px; border-radius: 11px; }
-  .card-icon img { width: 22px; height: 22px; }
-  .card-icon-emoji { font-size: 20px; }
+  .card-icon img { width: 24px; height: 24px; }
   .hero { padding: 44px 0 36px; }
-  .search-box { height: 48px; margin-top: 28px; }
+  .search-box { height: 64px; border-radius: 32px; padding: 0 20px; gap: 10px; margin-top: 28px; }
+  .search-box input { font-size: 1.02rem; }
   .page { padding: 0 16px 150px; }
   .modal { padding: 22px; }
   .icon-picker-grid { grid-template-columns: repeat(5, 1fr); }
@@ -1180,8 +1109,6 @@ input { font-family: inherit; }
 @media (max-width: 480px) {
   .card-grid { grid-template-columns: repeat(2, 1fr); gap: 9px; }
   .card-host { display: none; }
-  .card-name { font-size: 0.86rem; }
-  .search-box kbd { display: none; }
   .hero-meta .sep { margin: 0 5px; }
   .clock-time { letter-spacing: 0; }
   .bg-presets { grid-template-columns: repeat(4, 1fr); gap: 8px; }
@@ -1303,31 +1230,33 @@ input { font-family: inherit; }
 /* ============================================================
    Search engine selector
    ============================================================ */
-.search-box { position: relative; }
+/* backdrop-filter creates a stacking context — lift the whole search
+   box above the cards so the engine dropdown is never overlapped */
+.search-box { position: relative; z-index: 20; }
 
 .engine-anchor { position: relative; flex-shrink: 0; }
 
 .engine-btn {
   display: flex;
   align-items: center;
-  gap: 5px;
-  height: 34px;
-  padding: 0 12px;
-  border-radius: 17px;
+  gap: 7px;
+  height: 60px;
+  padding: 0 22px;
+  border-radius: 30px;
   border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-2);
-  font-size: 0.82rem;
+  font-size: 1rem;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
   transition: background 0.2s, color 0.2s, border-color 0.2s;
 }
 .engine-btn:hover { color: var(--text); border-color: var(--border-strong); background: rgba(255, 255, 255, 0.08); }
-.engine-btn svg { width: 12px; height: 12px; }
+.engine-btn svg { width: 14px; height: 14px; }
 .engine-dot {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--accent);
   flex-shrink: 0;
@@ -1379,7 +1308,8 @@ input { font-family: inherit; }
 .layout-phone .card {
   flex-direction: column;
   justify-content: flex-start;
-  gap: 8px;
+  /* 图标与文字之间的间距始终保留，不随图标大小变化 */
+  gap: 12px;
   padding: 6px 2px;
   background: transparent;
   border-color: transparent;
@@ -1397,20 +1327,30 @@ input { font-family: inherit; }
 
 .layout-phone .icon-wrap {
   width: min(var(--icon-size, 64px), 100%);
+  container-type: inline-size;
 }
 
 .layout-phone .card-icon {
   width: 100%;
+  height: auto; /* override the fixed 46px base height so the tile stays square */
   aspect-ratio: 1;
   border-radius: 24%;
 }
 
-.layout-phone .card-icon svg { width: 44%; height: 44%; }
-.layout-phone .card-icon img { width: 58%; height: 58%; object-fit: contain; }
-.layout-phone .card-icon-emoji { font-size: calc(var(--icon-size, 64px) * 0.42); }
+.layout-phone .card-icon svg { width: 50%; height: 50%; }
+.layout-phone .card-icon img { width: 62%; height: 62%; object-fit: contain; }
+/* Glyph scales with the REAL tile width (cqw), not the requested size,
+   so it never overflows when the tile is capped by the column width. */
+.layout-phone .card-icon-text {
+  font-size: calc(var(--icon-size, 64px) * 0.36);
+  font-size: 36cqw;
+}
+html[data-theme="light"] .layout-phone .card-icon.icon-text-mode {
+  background: hsl(var(--h, 228), 58%, 50%);
+}
 
 .layout-phone .card-meta { text-align: center; width: 100%; }
-.layout-phone .card-name { font-size: 0.78rem; font-weight: 500; }
+.layout-phone .card-name { font-weight: 500; }
 .layout-phone .card-host { display: none; }
 
 .layout-phone .card.drag-over,
@@ -1553,12 +1493,13 @@ input { font-family: inherit; }
   z-index: 3;
 }
 
-/* Delete — small × badge pinned to the icon's top-right corner */
+/* Delete — fixed-size × badge pinned to the icon's top-right corner.
+   Fixed pixels keep the badge shape at any icon size. */
 .edit-x {
   top: -7px;
   right: -7px;
-  width: clamp(17px, 25%, 24px);
-  height: clamp(17px, 25%, 24px);
+  width: 21px;
+  height: 21px;
   border-radius: 50%;
   background: #ff5d6c;
   color: #fff;
@@ -1566,19 +1507,17 @@ input { font-family: inherit; }
   transition: transform 0.15s;
 }
 .edit-x:hover { transform: scale(1.15); }
-.edit-x svg { width: 52%; height: 52%; }
+.edit-x svg { width: 54%; height: 54%; }
 
-/* Edit — dashed rounded square with pencil, centered on the icon */
+/* Edit — fixed-size dashed circle with pencil, centered on the icon */
 .edit-pencil {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 68%;
-  height: 68%;
-  min-width: 32px;
-  min-height: 32px;
-  border-radius: 26%;
-  background: rgba(12, 15, 24, 0.22);
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(12, 15, 24, 0.4);
   border: 1.6px dashed rgba(255, 255, 255, 0.96);
   color: #fff;
   backdrop-filter: blur(2px);
@@ -1589,8 +1528,8 @@ input { font-family: inherit; }
 }
 .edit-pencil:hover { transform: translate(-50%, -50%) scale(1.08); }
 .edit-pencil svg {
-  width: 44%;
-  height: 44%;
+  width: 46%;
+  height: 46%;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
 }
 
@@ -1679,6 +1618,74 @@ input { font-family: inherit; }
 .backup-row .btn-text.loading { opacity: 0.55; pointer-events: none; }
 
 /* ============================================================
+   Label font settings (阴影 / 大小 / 颜色)
+   ============================================================ */
+.font-setting {
+  margin-top: 12px;
+  padding: 13px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.font-color-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.font-color-label {
+  flex-shrink: 0;
+  width: 62px;
+  font-size: 0.84rem;
+  color: var(--text-2);
+}
+.font-swatches {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.font-swatch {
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  cursor: pointer;
+  transition: transform 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.font-swatch:hover { transform: scale(1.12); }
+.font-swatch.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.font-swatch.custom {
+  position: relative;
+  overflow: hidden;
+  background: conic-gradient(#ff5d5d, #ff9f43, #ffd93d, #6bcb77, #4ecdc4, #54a0ff, #a55eea, #ff5d5d);
+}
+.font-swatch.custom input[type="color"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.font-reset {
+  border: none;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 0.78rem;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 2px 4px;
+}
+.font-reset:hover { color: var(--text); }
+
+/* ============================================================
    Settings drawer — slides in from the right edge,
    main page stays visible and unobstructed
    ============================================================ */
@@ -1752,14 +1759,16 @@ html[data-theme="light"] .pager-arrow:hover { background: #fff; color: #1c2434; 
 html[data-theme="light"] .engine-btn { background: rgba(15, 23, 42, 0.045); }
 html[data-theme="light"] .grad-dir { background: rgba(15, 23, 42, 0.04); }
 html[data-theme="light"] .grad-builder,
-html[data-theme="light"] .grid-setting { background: rgba(15, 23, 42, 0.025); }
+html[data-theme="light"] .grid-setting,
+html[data-theme="light"] .font-setting { background: rgba(15, 23, 42, 0.025); }
+html[data-theme="light"] .font-swatch { border-color: rgba(15, 23, 42, 0.18); }
 
 /* ============================================================
    Responsive — new elements
    ============================================================ */
 @media (max-width: 768px) {
   .pager-arrow { display: none; }
-  .layout-phone .card-name { font-size: 0.72rem; }
+  .layout-phone .card { gap: 10px; }
   .hero { padding: 44px 0 36px; }
   .alpha-wrap { grid-template-columns: repeat(auto-fill, minmax(178px, 1fr)); gap: 20px 12px; }
 }
@@ -1771,8 +1780,10 @@ html[data-theme="light"] .grid-setting { background: rgba(15, 23, 42, 0.025); }
   .h-line { width: 17px; }
   .fab-item { width: 37px; height: 37px; }
   .card-grid.layout-phone { gap: 16px 6px; }
-  .engine-btn { padding: 0 9px; font-size: 0.76rem; }
+  .engine-btn { height: 44px; padding: 0 12px; border-radius: 22px; font-size: 0.82rem; }
   .grad-colors { flex-wrap: wrap; }
   .grad-colors .color-input { flex: 1 1 40%; }
   .settings-drawer { padding: 20px 18px 24px; }
+  .font-swatches { gap: 7px; }
+  .font-swatch { width: 24px; height: 24px; }
 }

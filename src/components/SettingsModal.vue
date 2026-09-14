@@ -1,7 +1,11 @@
 <script setup>
 import { ref, watch, computed, inject } from 'vue'
 import { BG_PRESETS } from '../data/presets'
-import { LAYOUTS, loadLayout, saveLayout, emitLayout, loadGrid, saveGrid, emitGrid } from '../composables/usePrefs'
+import {
+  LAYOUTS, loadLayout, saveLayout, emitLayout,
+  loadGrid, saveGrid, emitGrid, pxToPct, pctToPx,
+  loadFont, saveFont, applyFont,
+} from '../composables/usePrefs'
 
 const props = defineProps({
   visible: Boolean,
@@ -19,8 +23,37 @@ const SORT_KEY = 'nav_sort_usage'
 const sortUsage = ref(localStorage.getItem(SORT_KEY) === '1')
 const layout = ref(loadLayout())
 const grid = ref(loadGrid())
+const font = ref(loadFont())
 const wallpaperUrl = ref('')
 const wpBlur = ref(0)
+
+// 图标大小滑条以百分比展示：10% = 48px，100% = 500px
+const sizePct = computed(() => pxToPct(grid.value.size))
+
+function onSizeSlider(e) {
+  grid.value = { ...grid.value, size: pctToPx(e.target.value) }
+  onGridChange()
+}
+
+// ---- 字体调节（图标文字） ----
+const FONT_COLORS = ['#ffffff', '#ff5d5d', '#ff9f43', '#ffd93d', '#6BCB77', '#4ECDC4', '#54A0FF', '#A55EEA']
+const customFontColor = ref('#ffffff')
+
+function onFontChange() {
+  font.value = { ...font.value }
+  saveFont(font.value)
+  applyFont(font.value)
+}
+
+function pickFontColor(c) {
+  font.value.color = c
+  customFontColor.value = c
+  onFontChange()
+}
+
+function pickCustomFontColor(e) {
+  pickFontColor(e.target.value)
+}
 
 // ---- 可视化渐变编辑器（无需写代码） ----
 const gradC1 = ref('#0f1424')
@@ -117,6 +150,9 @@ function onGridChange() {
   saveGrid(grid.value)
   emitGrid(grid.value)
 }
+
+// 列数下限 2，配合超大图标（最大 500px）留出足够宽度
+const COLS_MIN = 2
 
 // ---- 壁纸 ----
 const hasWallpaper = computed(() => {
@@ -415,15 +451,51 @@ function pickImport() {
           </label>
           <label class="slider-row">
             <span>每屏列数</span>
-            <input type="range" min="3" max="9" step="1" v-model.number="grid.cols" @change="onGridChange">
+            <input type="range" :min="COLS_MIN" max="9" step="1" v-model.number="grid.cols" @change="onGridChange">
             <b>{{ grid.cols }} 列</b>
           </label>
           <label class="slider-row">
             <span>图标大小</span>
-            <input type="range" min="48" max="140" step="4" v-model.number="grid.size" @change="onGridChange">
-            <b>{{ grid.size }}px</b>
+            <input type="range" min="10" max="100" step="1" :value="sizePct" @input="onSizeSlider">
+            <b>{{ sizePct }}%</b>
           </label>
-          <p class="settings-hint">图标超出屏幕时按手机桌面分页，可左右滑动切换</p>
+          <p class="settings-hint">10% = 48px，100% = 500px；图标超出列宽时自动适配，可减小列数放大图标</p>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>字体</label>
+        <div class="font-setting">
+          <label class="switch-row">
+            <span class="switch-label">字体阴影</span>
+            <input type="checkbox" v-model="font.shadow" @change="onFontChange">
+            <span class="switch" aria-hidden="true"></span>
+          </label>
+          <label class="slider-row">
+            <span>字体大小</span>
+            <input type="range" min="12" max="30" step="1" v-model.number="font.size" @input="onFontChange">
+            <b>{{ font.size }}</b>
+          </label>
+          <div class="font-color-row">
+            <span class="font-color-label">字体颜色</span>
+            <div class="font-swatches">
+              <button
+                v-for="c in FONT_COLORS"
+                :key="c"
+                type="button"
+                class="font-swatch"
+                :class="{ selected: font.color === c }"
+                :style="{ background: c }"
+                :title="c"
+                @click="pickFontColor(c)"
+              ></button>
+              <label class="font-swatch custom" title="自定义颜色">
+                <input type="color" :value="customFontColor" @input="pickCustomFontColor">
+              </label>
+            </div>
+            <button v-if="font.color" class="font-reset" type="button" @click="pickFontColor('')">重置</button>
+          </div>
+          <p class="settings-hint">调整图标下方文字的大小、阴影与颜色，图标与文字始终保持间距</p>
         </div>
       </div>
 

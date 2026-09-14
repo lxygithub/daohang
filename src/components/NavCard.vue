@@ -34,6 +34,21 @@ const host = computed(() => {
   }
 })
 
+// ---- Solid-color text icon fallback ----
+// Shown only when no icon was auto-fetched and the user hasn't uploaded one.
+// Legacy emoji icons render as text icons too (emoji picker was removed).
+const isTextIcon = computed(() =>
+  !props.service.icon ||
+  props.service.iconType === 'text' ||
+  props.service.iconType === 'emoji' ||
+  (props.service.iconType === 'preset' && !ICONS[props.service.icon])
+)
+
+const textChar = computed(() => {
+  const c = (props.service.name || '?').trim().charAt(0)
+  return c ? c.toUpperCase() : '?'
+})
+
 // ---- click: open service / in edit mode open editor ----
 // suppressNextClick: the click right after a touch long-press that fired edit
 // mode belongs to the same gesture and must be swallowed.
@@ -209,13 +224,13 @@ function handleTouchEnd() {
     @touchcancel="handleTouchEnd"
   >
     <div class="icon-wrap">
-      <div class="card-icon" :style="{ '--h': hue }">
+      <div class="card-icon" :class="{ 'icon-text-mode': isTextIcon }" :style="{ '--h': hue }">
         <img
           v-if="service.iconType === 'url' && service.icon"
           :src="service.icon"
           :alt="service.name"
         >
-        <span v-else-if="service.iconType === 'emoji'" class="card-icon-emoji">{{ service.icon }}</span>
+        <span v-else-if="isTextIcon" class="card-icon-text">{{ textChar }}</span>
         <span v-else v-html="ICONS[service.icon] || ICONS.server"></span>
       </div>
 
