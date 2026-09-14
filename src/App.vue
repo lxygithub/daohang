@@ -652,18 +652,18 @@ onUnmounted(() => {
     />
   </main>
 
-  <!-- Floating action cluster: windmill + pagoda menu -->
-  <div class="fab-cluster">
-    <!-- Windmill — random Bing wallpaper -->
-    <button
-      class="fab fab-windmill"
-      :class="{ loading: fabLoading }"
-      title="随机壁纸（Bing 每日图）"
-      @click.stop="randomWallpaper"
-    >
-      <img src="/windmill.svg" alt="" draggable="false">
-    </button>
+  <!-- Windmill — random Bing wallpaper (pinned bottom-right) -->
+  <button
+    class="fab fab-windmill"
+    :class="{ loading: fabLoading }"
+    title="随机壁纸（Bing 每日图）"
+    @click.stop="randomWallpaper"
+  >
+    <img src="/windmill.svg" alt="" draggable="false">
+  </button>
 
+  <!-- Pagoda menu — pinned top-right -->
+  <div class="fab-cluster">
     <!-- Pagoda menu: actions fan out in a horizontal row -->
     <div class="fab-anchor">
       <transition name="fab-row">
