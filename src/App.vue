@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted, provide } from 'vue'
 import { useConfig, getStoredPassword, AUTH_KEY } from './composables/useConfig'
 import { useToast } from './composables/useToast'
+import { loadView, saveView, emitView } from './composables/usePrefs'
 import NavGrid from './components/NavGrid.vue'
 import EditModal from './components/EditModal.vue'
 import SettingsModal from './components/SettingsModal.vue'
@@ -75,8 +76,34 @@ function updateClock() {
   else greeting.value = '晚上好'
 }
 
+// ---- Search engines ----
+const ENGINES = [
+  { id: 'local', name: '本地', hint: '搜索服务…', url: '' },
+  { id: 'baidu', name: '百度', hint: '百度一下…', url: 'https://www.baidu.com/s?wd={q}' },
+  { id: 'bing', name: '必应', hint: '必应搜索…', url: 'https://www.bing.com/search?q={q}' },
+  { id: 'google', name: 'Google', hint: 'Google 搜索…', url: 'https://www.google.com/search?q={q}' },
+  { id: 'sogou', name: '搜狗', hint: '搜狗搜索…', url: 'https://www.sogou.com/web?query={q}' },
+  { id: 'ddg', name: 'DuckDuckGo', hint: 'DuckDuckGo 搜索…', url: 'https://duckduckgo.com/?q={q}' },
+]
+const ENGINE_KEY = 'nav_engine'
+const engineId = ref(localStorage.getItem(ENGINE_KEY) || 'local')
+const engine = computed(() => ENGINES.find(e => e.id === engineId.value) || ENGINES[0])
+const showEngineMenu = ref(false)
+
+function selectEngine(id) {
+  engineId.value = id
+  showEngineMenu.value = false
+  try { localStorage.setItem(ENGINE_KEY, id) } catch {}
+  searchInputRef.value?.focus()
+}
+
 // Keyboard shortcut: "/" focuses search
 function handleKeydown(e) {
+  if (e.key === 'Escape') {
+    if (editMode.value) { editMode.value = false; return }
+    showEngineMenu.value = false
+    return
+  }
   if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return
   const tag = document.activeElement?.tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return
@@ -84,15 +111,39 @@ function handleKeydown(e) {
   searchInputRef.value?.focus()
 }
 
-// Enter in search: URL → open directly, otherwise → open first match
+// Enter in search:
+//  - engine selected → open engine results in a new tab
+//  - local: URL → open directly, otherwise → open first local match
 function handleSearchEnter() {
   const q = searchQuery.value.trim()
   if (!q) return
+  if (engine.value.id !== 'local') {
+    window.open(engine.value.url.replace('{q}', encodeURIComponent(q)), '_blank')
+    return
+  }
   if (/^(https?:\/\/)?([\w-]+\.)+[a-z]{2,}(:\d+)?(\/\S*)?$/i.test(q)) {
     window.open(q.includes('://') ? q : 'https://' + q, '_blank')
     return
   }
   window.dispatchEvent(new CustomEvent('open-first-match'))
+}
+
+// ---- Long-press edit mode (global) ----
+const editMode = ref(false)
+
+function setEditMode(v) {
+  editMode.value = v
+}
+
+function handleDocClick(e) {
+  // Close engine menu when clicking outside
+  if (showEngineMenu.value && !e.target.closest('.engine-anchor')) {
+    showEngineMenu.value = false
+  }
+  if (!editMode.value) return
+  // Clicking a card or inside a modal keeps edit mode; blank space exits.
+  if (e.target.closest('.card') || e.target.closest('.modal-overlay') || e.target.closest('.fab')) return
+  editMode.value = false
 }
 
 // Password verification
@@ -148,19 +199,70 @@ function closeEditModal() {
 // Settings modal
 const showSettingsModal = ref(false)
 
-// Background & wallpaper
+// ---- View mode (grid / alpha) ----
+const viewMode = ref(loadView())
+
+function toggleViewMode() {
+  viewMode.value = viewMode.value === 'alpha' ? 'grid' : 'alpha'
+  saveView(viewMode.value)
+  emitView(viewMode.value)
+}
+
+// ---- Background & wallpaper ----
 function applyBackground() {
   const bg = config.value?.background
   const wp = config.value?.wallpaper
+  const blur = Number(config.value?.wallpaperBlur) || 0
   const decor = document.querySelector('.bg-decor')
+  const layer = document.querySelector('.wp-layer')
+
   if (wp && wp.type !== 'none' && wp.value) {
-    document.body.style.background = `#0d1017 url("${wp.value}") center / cover no-repeat fixed`
+    if (layer) {
+      layer.style.backgroundImage = `url("${wp.value}")`
+      layer.style.setProperty('--wp-blur', blur + 'px')
+      layer.classList.add('active')
+    }
     decor?.classList.add('dimmed')
+    document.body.style.background = '#0d1017'
     return
   }
+  layer?.classList.remove('active')
+  if (layer) layer.style.backgroundImage = ''
   decor?.classList.remove('dimmed')
   const isDefault = !bg || !bg.value || bg.value === '#0d1017'
   document.body.style.background = isDefault ? '' : bg.value
+}
+
+// ---- Windmill FAB: random Bing wallpaper ----
+const fabLoading = ref(false)
+
+function setWallpaper(value) {
+  const cfg = config.value
+  if (!cfg) return
+  cfg.wallpaper = value ? { type: 'url', value } : { type: 'none', value: '' }
+  applyBackground()
+  saveConfig()
+}
+
+async function randomWallpaper() {
+  if (fabLoading.value) return
+  fabLoading.value = true
+  try {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 12000)
+    const res = await fetch('/api/wallpaper', { signal: ctrl.signal })
+    clearTimeout(timer)
+    const d = await res.json()
+    if (!d.url) throw new Error(d.error || 'no url')
+    ensureVerified(() => {
+      setWallpaper(d.url)
+      showToast('壁纸已更换')
+    })
+  } catch {
+    showToast('获取壁纸失败，请稍后再试')
+  } finally {
+    fabLoading.value = false
+  }
 }
 
 // Provide shared state to children
@@ -169,12 +271,16 @@ provide('saveConfig', saveConfig)
 provide('showToast', showToast)
 provide('ensureVerified', ensureVerified)
 provide('openEditModal', openEditModal)
+provide('editMode', editMode)
+provide('setEditMode', setEditMode)
+provide('setWallpaper', setWallpaper)
 
 onMounted(async () => {
   updateClock()
   clockTimer = setInterval(updateClock, 1000)
   window.addEventListener('keydown', handleKeydown)
   window.addEventListener('apply-background', applyBackground)
+  window.addEventListener('click', handleDocClick, true)
   // 会话内记住验证状态，刷新无需重复输密码
   if (getStoredPassword()) verified.value = true
   let savedLight = false
@@ -191,10 +297,14 @@ onUnmounted(() => {
   if (clockTimer) clearInterval(clockTimer)
   window.removeEventListener('keydown', handleKeydown)
   window.removeEventListener('apply-background', applyBackground)
+  window.removeEventListener('click', handleDocClick, true)
 })
 </script>
 
 <template>
+  <!-- Wallpaper layer (blurred, below aurora) -->
+  <div class="wp-layer" aria-hidden="true"></div>
+
   <!-- Aurora decoration -->
   <div class="bg-decor" aria-hidden="true">
     <div class="aurora aurora-1"></div>
@@ -216,6 +326,21 @@ onUnmounted(() => {
         <span class="brand-name">导航</span>
       </div>
       <div class="topbar-actions">
+        <button class="icon-btn" :title="viewMode === 'alpha' ? '切换到网格视图' : '切换到字母视图'" @click="toggleViewMode">
+          <svg v-if="viewMode === 'alpha'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+            <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+            <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+            <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+          </svg>
+          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 7h9"/>
+            <path d="M4 12h7"/>
+            <path d="M4 17h5"/>
+            <path d="M17 6v12"/>
+            <path d="M14 15l3 3 3-3"/>
+          </svg>
+        </button>
         <button class="icon-btn" :title="isLight ? '切换到暗色' : '切换到亮色'" @click="toggleTheme">
           <svg v-if="isLight" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
@@ -261,15 +386,36 @@ onUnmounted(() => {
         <span class="greeting">{{ greeting }}</span>
       </div>
       <form autocomplete="off" class="search-box" @submit.prevent>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="11" cy="11" r="8"/>
-          <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-        </svg>
+        <div class="engine-anchor">
+          <button type="button" class="engine-btn" :title="`搜索引擎：${engine.name}`" @click.stop="showEngineMenu = !showEngineMenu">
+            <span class="engine-dot" v-if="engine.id !== 'local'"></span>{{ engine.name }}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+          </button>
+          <transition name="menu-pop">
+            <div v-if="showEngineMenu" class="engine-menu" @click.stop>
+              <button
+                v-for="e in ENGINES"
+                :key="e.id"
+                type="button"
+                class="engine-item"
+                :class="{ active: e.id === engineId }"
+                @click="selectEngine(e.id)"
+              >
+                <span>{{ e.name }}</span>
+                <svg v-if="e.id === engineId" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              </button>
+            </div>
+          </transition>
+        </div>
         <input
           ref="searchInputRef"
           type="text"
           v-model="searchQuery"
-          placeholder="搜索服务…"
+          :placeholder="engine.hint"
           readonly
           @focus="e => e.target.removeAttribute('readonly')"
           @blur="e => !e.target.value && e.target.setAttribute('readonly', '')"
@@ -299,9 +445,26 @@ onUnmounted(() => {
       v-else
       :services="config.services || []"
       :filter="searchQuery"
+      :view="viewMode"
       @reordered="saveConfig"
     />
   </main>
+
+  <!-- Windmill FAB — random Bing wallpaper -->
+  <button
+    class="fab"
+    :class="{ loading: fabLoading }"
+    title="随机壁纸（Bing 每日图）"
+    @click.stop="randomWallpaper"
+  >
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 12c-2 0-3.5-1.5-3.5-3.5S10 5 12 5V12z" fill="currentColor" stroke="none" opacity="0.9"/>
+      <path d="M12 12c0 2-1.5 3.5-3.5 3.5S5 14 5 12H12z" fill="currentColor" stroke="none" opacity="0.65"/>
+      <path d="M12 12c2 0 3.5 1.5 3.5 3.5S14 19 12 19V12z" fill="currentColor" stroke="none" opacity="0.9"/>
+      <path d="M12 12c0-2 1.5-3.5 3.5-3.5S19 10 19 12H12z" fill="currentColor" stroke="none" opacity="0.65"/>
+      <circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/>
+    </svg>
+  </button>
 
   <EditModal
     v-if="config"

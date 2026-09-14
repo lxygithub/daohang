@@ -28,6 +28,10 @@ const iconText = ref('')
 const iconBgColor = ref('#3b82f6')
 const textIconPreview = ref('')
 const generatingText = ref(false)
+const nameTouched = ref(false)
+let autoFetchTimer = null
+let skipAutoUrl = ''
+let lastNameAuto = ''
 
 const isEditing = computed(() => props.editIndex >= 0)
 const modalTitle = computed(() => isEditing.value ? '编辑项目' : '新增项目')
@@ -51,11 +55,15 @@ watch(() => props.visible, (val) => {
   iconBgColor.value = '#3b82f6'
   textIconPreview.value = ''
   faviconPreview.value = ''
+  nameTouched.value = false
+  lastNameAuto = ''
+  clearTimeout(autoFetchTimer)
   if (props.editIndex >= 0) {
     const svc = props.services[props.editIndex]
     if (svc) {
       name.value = svc.name
       url.value = svc.url
+      skipAutoUrl = svc.url
       group.value = svc.group || ''
       iconUrl.value = svc.iconType === 'url' ? svc.icon : ''
       if (svc.iconType === 'emoji') {
@@ -68,8 +76,18 @@ watch(() => props.visible, (val) => {
   } else {
     name.value = ''
     url.value = ''
+    skipAutoUrl = ''
     group.value = ''
   }
+})
+
+// 输入链接后自动获取标题 + 图标（防抖，静默）
+watch(url, (val) => {
+  if (val.trim() === skipAutoUrl) return
+  clearTimeout(autoFetchTimer)
+  const u = val.trim()
+  if (!u || !parseDomain(u)) return
+  autoFetchTimer = setTimeout(() => autoFetch(true), 800)
 })
 
 function selectIcon(key) {
@@ -149,45 +167,43 @@ function parseDomain(u) {
 }
 
 async function fetchFavicon() {
+  return autoFetch(false)
+}
+
+// 自动获取：标题 + 图标一次拿齐（silent=true 时由防抖触发，不弹提示）
+async function autoFetch(silent = false) {
   const u = url.value.trim()
-  if (!u) { showToast('请先填写链接'); return }
-  const domain = parseDomain(u)
-  if (!domain) { showToast('链接格式不正确'); return }
-
-  fetchingFavicon.value = true
-  // Normalize URL — add protocol if missing
+  if (!u || !parseDomain(u)) {
+    if (!silent) showToast('请先填写正确的链接')
+    return
+  }
   const normalized = u.includes('://') ? u : 'https://' + u
-
+  fetchingFavicon.value = true
   try {
-    // Backend fetches page HTML, parses <link rel="icon">, falls back to /favicon.ico
-    const res = await fetch(`/api/favicon?url=${encodeURIComponent(normalized)}`)
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 12000)
+    const res = await fetch(`/api/meta?url=${encodeURIComponent(normalized)}`, { signal: ctrl.signal })
+    clearTimeout(timer)
     const data = await res.json()
 
-    if (!data.found || !data.url) {
-      showToast('未找到图标，可上传自定义图标')
-      fetchingFavicon.value = false
-      return
+    let got = false
+    if (data.title && (!name.value.trim() || name.value === lastNameAuto)) {
+      name.value = data.title
+      lastNameAuto = data.title
+      got = true
     }
-
-    // Verify loaded icon is not a 1x1 spacer
-    const img = new Image()
-    img.onload = () => {
-      if (img.naturalWidth < 8 && img.naturalHeight < 8) {
-        showToast('未找到图标，可上传自定义图标')
-      } else {
-        faviconPreview.value = data.url
-        iconUrl.value = data.url
-        selectedIcon.value = ''
-      }
-      fetchingFavicon.value = false
+    if (data.icon) {
+      iconUrl.value = data.icon
+      faviconPreview.value = data.icon
+      selectedIcon.value = ''
+      got = true
     }
-    img.onerror = () => {
-      showToast('未找到图标，可上传自定义图标')
-      fetchingFavicon.value = false
+    if (!silent) {
+      showToast(got ? '已自动填充' : '未能获取，可手动填写')
     }
-    img.src = data.url
   } catch {
-    showToast('获取图标失败')
+    if (!silent) showToast('获取失败，请手动填写')
+  } finally {
     fetchingFavicon.value = false
   }
 }
@@ -280,18 +296,18 @@ function handleOverlayClick(e) {
       </div>
       <div class="form-group">
         <label>名称</label>
-        <input type="text" class="form-input" v-model="name" placeholder="服务名称">
+        <input type="text" class="form-input" v-model="name" placeholder="服务名称" @input="nameTouched = true">
       </div>
       <div class="form-group">
-        <label>链接</label>
+        <label>链接 <span class="label-hint">（粘贴后自动识别名称与图标）</span></label>
         <div class="input-row">
-          <input type="text" class="form-input" v-model="url" placeholder="https://...">
+          <input type="text" class="form-input" v-model="url" placeholder="粘贴链接，如 github.com">
           <button
             class="btn-text fetch-btn"
             :class="{ loading: fetchingFavicon }"
-            @click="fetchFavicon"
+            @click="autoFetch(false)"
             :disabled="fetchingFavicon"
-          >{{ fetchingFavicon ? '获取中…' : '图标' }}</button>
+          >{{ fetchingFavicon ? '获取中…' : '自动获取' }}</button>
         </div>
       </div>
       <div class="form-group">
