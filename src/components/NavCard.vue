@@ -1,6 +1,5 @@
 <script setup>
 import { computed, inject, ref } from 'vue'
-import { ICONS } from '../data/icons'
 
 const props = defineProps({
   service: { type: Object, required: true },
@@ -36,12 +35,12 @@ const host = computed(() => {
 
 // ---- Solid-color text icon fallback ----
 // Shown only when no icon was auto-fetched and the user hasn't uploaded one.
-// Legacy emoji icons render as text icons too (emoji picker was removed).
+// Legacy emoji / preset icons render as text icons too (both pickers are gone).
 const isTextIcon = computed(() =>
   !props.service.icon ||
   props.service.iconType === 'text' ||
   props.service.iconType === 'emoji' ||
-  (props.service.iconType === 'preset' && !ICONS[props.service.icon])
+  props.service.iconType === 'preset'
 )
 
 const textChar = computed(() => {
@@ -230,8 +229,7 @@ function handleTouchEnd() {
           :src="service.icon"
           :alt="service.name"
         >
-        <span v-else-if="isTextIcon" class="card-icon-text">{{ textChar }}</span>
-        <span v-else v-html="ICONS[service.icon] || ICONS.server"></span>
+        <span v-if="isTextIcon" class="card-icon-text">{{ textChar }}</span>
       </div>
 
       <!-- Edit-mode overlay: delete top-right, edit center (anchored to the icon) -->

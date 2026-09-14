@@ -73,13 +73,12 @@ html[data-theme="light"] .card-icon {
 html[data-theme="light"] .group-count,
 html[data-theme="light"] .switch,
 html[data-theme="light"] .modal-close,
-html[data-theme="light"] .icon-picker-item,
+html[data-theme="light"] .engine-cell,
 html[data-theme="light"] .empty-hint {
   background: rgba(15, 23, 42, 0.05);
 }
 html[data-theme="light"] .color-input,
-html[data-theme="light"] .form-input,
-html[data-theme="light"] .icon-picker-container {
+html[data-theme="light"] .form-input {
   background: rgba(15, 23, 42, 0.035);
 }
 html[data-theme="light"] .btn-text.cancel { background: rgba(15, 23, 42, 0.06); }
@@ -256,13 +255,19 @@ input { font-family: inherit; }
 }
 
 .clock-time {
-  font-size: clamp(3.4rem, 8vw, 4.6rem);
+  font-size: var(--clock-size, clamp(3.4rem, 8vw, 4.6rem));
   font-weight: 700;
   letter-spacing: 1px;
   background: linear-gradient(180deg, #ffffff 30%, #a5adc2 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
+}
+/* Custom clock color: drop the gradient, paint with the chosen color */
+.clock-time.plain-color {
+  background: none;
+  -webkit-text-fill-color: currentColor;
+  color: var(--clock-color, #ffffff);
 }
 
 .clock-sec {
@@ -279,18 +284,27 @@ input { font-family: inherit; }
 }
 .hero-meta .sep { margin: 0 8px; color: var(--text-3); }
 .hero-meta .greeting { color: var(--accent); font-weight: 600; }
+.hero-meta .lunar { color: var(--text-2); }
+.hero-meta .festival {
+  color: var(--accent);
+  font-weight: 600;
+}
+html[data-theme="light"] .hero-meta .festival { color: #d43e3e; }
 
-/* Search — 2× the original footprint */
+/* Search — 2× the original footprint, tunable via 搜索框设置
+   (--sb-scale size · --sb-radius 100% = pill · --sb-opacity surface alpha) */
 .search-box {
+  --sb-w: 1120px;
+  --sb-h: 108px;
   margin-top: 36px;
-  width: min(1120px, 100%);
+  width: min(calc(var(--sb-w) * var(--sb-scale, 1)), 100%);
+  height: calc(var(--sb-h) * var(--sb-scale, 1));
+  border-radius: calc(var(--sb-h) * var(--sb-scale, 1) * 0.5 * var(--sb-radius, 1));
   display: flex;
   align-items: center;
   gap: 16px;
   padding: 0 34px;
-  height: 108px;
-  border-radius: 54px;
-  background: var(--surface);
+  background: rgba(255, 255, 255, calc(0.05 * var(--sb-opacity, 1)));
   border: 1px solid var(--border);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
@@ -299,7 +313,7 @@ input { font-family: inherit; }
 .search-box:focus-within {
   border-color: rgba(125, 139, 248, 0.55);
   box-shadow: var(--ring);
-  background: var(--surface-hover);
+  background: rgba(255, 255, 255, calc(0.08 * var(--sb-opacity, 1)));
 }
 .search-box svg {
   width: 22px;
@@ -374,6 +388,7 @@ input { font-family: inherit; }
 
 /* Icon container — per-card tint via --h */
 .card-icon {
+  position: relative;
   width: 46px;
   height: 46px;
   flex-shrink: 0;
@@ -441,19 +456,19 @@ html[data-theme="light"] .card-icon.icon-text-mode {
 }
 
 /* ============================================================
-   Hitokoto quote
+   Hitokoto quote — now sits right below the clock, above the search box
    ============================================================ */
 .quote {
-  margin-top: 22px;
-  max-width: 560px;
-  color: var(--text-3);
-  font-size: 0.85rem;
+  margin-top: 26px;
+  max-width: 640px;
+  color: var(--quote-color, var(--text-3));
+  font-size: var(--quote-size, 0.85rem);
   line-height: 1.7;
   cursor: pointer;
   user-select: none;
-  transition: color 0.2s;
+  transition: color 0.2s, opacity 0.2s;
 }
-.quote:hover { color: var(--text-2); }
+.quote:hover { opacity: 0.85; }
 .quote-from { margin-left: 6px; opacity: 0.8; }
 
 /* ============================================================
@@ -821,51 +836,55 @@ html[data-theme="light"] .card-icon.icon-text-mode {
 .custom-icon-panel .form-input { flex: 1; }
 
 /* ============================================================
-   Icon picker
+   Custom search engines manager (settings drawer)
    ============================================================ */
-.icon-picker-container {
-  max-height: 340px;
-  overflow-y: auto;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.02);
-  padding: 10px;
-}
-
-/* Icon picker (SVG presets; emoji picker removed) */
-.icon-picker-grid {
-  display: grid;
-  grid-template-columns: repeat(6, 1fr);
-  gap: 6px;
-}
-.icon-picker-item {
+.engine-manager {
   display: flex;
   flex-direction: column;
+  gap: 10px;
+}
+.engine-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+}
+.engine-ico {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  border-radius: 9px;
+  flex-shrink: 0;
+}
+.engine-ico.fallback {
+  display: flex;
   align-items: center;
   justify-content: center;
-  padding: 10px 4px;
-  border-radius: 10px;
-  border: 2px solid transparent;
-  background: rgba(255, 255, 255, 0.035);
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  background: var(--accent-grad);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.9rem;
 }
-.icon-picker-item:hover { background: rgba(255, 255, 255, 0.08); }
-.icon-picker-item.selected {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-}
-.icon-picker-item svg { width: 22px; height: 22px; color: var(--text-2); }
-.icon-picker-item:hover svg { color: var(--text); }
-.icon-picker-item span {
-  font-size: 0.68rem;
+.engine-info { flex: 1; min-width: 0; }
+.engine-name { font-size: 0.9rem; font-weight: 600; color: var(--text); }
+.engine-url {
+  font-size: 0.75rem;
   color: var(--text-3);
-  margin-top: 5px;
-  max-width: 100%;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
+.engine-add-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.engine-add-row .form-input { min-width: 0; }
+.engine-add-row input:first-child { flex: 0 0 110px; }
+.engine-add-row input:nth-child(2) { flex: 1; }
 
 .color-input {
   width: 42px;
@@ -1099,11 +1118,14 @@ html[data-theme="light"] .card-icon.icon-text-mode {
   .card-icon { width: 40px; height: 40px; border-radius: 11px; }
   .card-icon img { width: 24px; height: 24px; }
   .hero { padding: 44px 0 36px; }
-  .search-box { height: 64px; border-radius: 32px; padding: 0 20px; gap: 10px; margin-top: 28px; }
+  .search-box { --sb-w: 560px; --sb-h: 64px; padding: 0 20px; gap: 10px; margin-top: 28px; }
   .search-box input { font-size: 1.02rem; }
-  .page { padding: 0 16px 150px; }
+  .engine-btn { height: 44px; width: 44px; border-radius: 22px; }
+  .engine-btn .engine-icon { width: 24px; height: 24px; }
+  .search-submit { width: 44px; height: 44px; }
+  .search-submit svg { width: 19px; height: 19px; }
+  .page { padding: 0 16px 110px; }
   .modal { padding: 22px; }
-  .icon-picker-grid { grid-template-columns: repeat(5, 1fr); }
 }
 
 @media (max-width: 480px) {
@@ -1138,7 +1160,7 @@ html[data-theme="light"] .card-icon.icon-text-mode {
 .fab-cluster {
   position: fixed;
   right: 26px;
-  bottom: 34px;
+  top: 24px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1239,21 +1261,26 @@ html[data-theme="light"] .card-icon.icon-text-mode {
 .engine-btn {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   height: 60px;
-  padding: 0 22px;
+  width: 60px;
+  justify-content: center;
+  padding: 0;
   border-radius: 30px;
   border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.05);
   color: var(--text-2);
-  font-size: 1rem;
-  font-weight: 600;
   cursor: pointer;
-  white-space: nowrap;
   transition: background 0.2s, color 0.2s, border-color 0.2s;
 }
 .engine-btn:hover { color: var(--text); border-color: var(--border-strong); background: rgba(255, 255, 255, 0.08); }
 .engine-btn svg { width: 14px; height: 14px; }
+.engine-btn .engine-icon {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  border-radius: 8px;
+}
 .engine-dot {
   width: 8px;
   height: 8px;
@@ -1262,37 +1289,165 @@ html[data-theme="light"] .card-icon.icon-text-mode {
   flex-shrink: 0;
 }
 
+/* Icon-grid engine menu */
 .engine-menu {
   position: absolute;
   top: calc(100% + 12px);
   left: 0;
-  min-width: 168px;
+  width: 264px;
   background: var(--panel);
   border: 1px solid var(--border-strong);
-  border-radius: 14px;
-  padding: 6px;
+  border-radius: 16px;
+  padding: 10px;
   box-shadow: var(--shadow-pop);
   z-index: 1100;
 }
-.engine-item {
+
+.engine-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+
+.engine-cell {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
-  padding: 9px 12px;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.045);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
+}
+.engine-cell:hover { background: rgba(255, 255, 255, 0.1); transform: translateY(-1px); }
+.engine-cell.active { border-color: var(--accent); background: var(--accent-soft); }
+.engine-cell img {
+  width: 62%;
+  height: 62%;
+  object-fit: contain;
+  border-radius: 18%;
+  pointer-events: none;
+}
+.engine-cell.add { color: var(--text-3); }
+.engine-cell.add:hover { color: var(--text); }
+.engine-cell.add svg { width: 38%; height: 38%; }
+.engine-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 62%;
+  height: 62%;
+  border-radius: 18%;
+  background: var(--accent-grad);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+.engine-check {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  width: 13px;
+  height: 13px;
+  color: var(--accent);
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+}
+
+/* Inline add-engine form (inside the dropdown) */
+.engine-add-form {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.engine-add-form input {
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font-size: 0.86rem;
+  outline: none;
+}
+.engine-add-form input:focus { border-color: var(--accent); }
+.engine-add-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.engine-add-actions .btn-text { height: 32px; padding: 0 14px; font-size: 0.82rem; }
+
+/* Optional search submit button (隐藏搜索按钮 = off) */
+.search-submit {
+  flex-shrink: 0;
+  width: 60px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
   border: none;
-  border-radius: 9px;
+  background: var(--accent-grad);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(106, 123, 247, 0.35);
+  transition: transform 0.15s var(--ease), box-shadow 0.15s;
+}
+.search-submit:hover { transform: scale(1.05); }
+.search-submit:active { transform: scale(0.96); }
+.search-submit svg { width: 24px; height: 24px; }
+
+/* Search suggestions panel */
+.search-suggest {
+  position: absolute;
+  top: calc(100% + 10px);
+  left: 0;
+  right: 0;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 18px;
+  padding: 8px;
+  box-shadow: var(--shadow-pop);
+  z-index: 1090;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.suggest-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 14px;
+  border: none;
+  border-radius: 12px;
   background: transparent;
   color: var(--text-2);
-  font-size: 0.86rem;
-  cursor: pointer;
+  font-size: 0.92rem;
   text-align: left;
+  cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
-.engine-item:hover { background: rgba(255, 255, 255, 0.06); color: var(--text); }
-.engine-item.active { color: var(--accent); font-weight: 600; }
-.engine-item svg { width: 14px; height: 14px; flex-shrink: 0; }
+.suggest-item:hover { background: rgba(255, 255, 255, 0.06); color: var(--text); }
+.suggest-item .suggest-name {
+  color: var(--text);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.suggest-item .suggest-host {
+  font-size: 0.78rem;
+  color: var(--text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.suggest-item.search svg { width: 16px; height: 16px; flex-shrink: 0; color: var(--accent); }
 
 .menu-pop-enter-active, .menu-pop-leave-active { transition: opacity 0.18s, transform 0.18s; }
 .menu-pop-enter-from, .menu-pop-leave-to { opacity: 0; transform: translateY(-6px) scale(0.97); }
@@ -1343,9 +1498,28 @@ html[data-theme="light"] .card-icon.icon-text-mode {
    so it never overflows when the tile is capped by the column width. */
 .layout-phone .card-icon-text {
   font-size: calc(var(--icon-size, 64px) * 0.36);
-  font-size: 36cqw;
+  font-size: 22.3cqw;
 }
+/* Visual parity: image favicons render at 62% of the icon box, but the solid
+   text tile used to fill 100% — making text icons look 1.6× larger.
+   Draw the solid square at exactly the same 62% footprint (via ::before so
+   the outer box stays square and labels across the row keep aligning). */
+.layout-phone .card-icon.icon-text-mode,
 html[data-theme="light"] .layout-phone .card-icon.icon-text-mode {
+  background: transparent;
+  border-color: transparent;
+}
+.layout-phone .card-icon.icon-text-mode::before {
+  content: '';
+  position: absolute;
+  inset: 19%;
+  border-radius: 24%;
+  background: hsl(var(--h, 228), 62%, 52%);
+}
+.layout-phone .card-icon-text { position: relative; z-index: 1; }
+/* Glyph sits on the saturated ::before tile — keep it white in both themes */
+html[data-theme="light"] .layout-phone .card-icon .card-icon-text { color: #fff; }
+html[data-theme="light"] .layout-phone .card-icon.icon-text-mode::before {
   background: hsl(var(--h, 228), 58%, 50%);
 }
 
@@ -1509,7 +1683,9 @@ html[data-theme="light"] .layout-phone .card-icon.icon-text-mode {
 .edit-x:hover { transform: scale(1.15); }
 .edit-x svg { width: 54%; height: 54%; }
 
-/* Edit — fixed-size dashed circle with pencil, centered on the icon */
+/* Edit — fixed-size dashed circle with pencil, centered on the icon.
+   Hidden while editing; only appears when the pointer hovers the card
+   (touch devices keep it visible since there is no hover there). */
 .edit-pencil {
   top: 50%;
   left: 50%;
@@ -1524,9 +1700,15 @@ html[data-theme="light"] .layout-phone .card-icon.icon-text-mode {
   -webkit-backdrop-filter: blur(2px);
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
-  transition: transform 0.15s;
+  transition: transform 0.15s, opacity 0.18s;
+  opacity: 1;
 }
-.edit-pencil:hover { transform: translate(-50%, -50%) scale(1.08); }
+@media (hover: hover) and (pointer: fine) {
+  .edit-pencil { opacity: 0; pointer-events: none; }
+  .card:hover .edit-pencil,
+  .card:focus-within .edit-pencil { opacity: 1; pointer-events: auto; }
+  .edit-pencil:hover { transform: translate(-50%, -50%) scale(1.08); }
+}
 .edit-pencil svg {
   width: 46%;
   height: 46%;
@@ -1774,13 +1956,13 @@ html[data-theme="light"] .font-swatch { border-color: rgba(15, 23, 42, 0.18); }
 }
 
 @media (max-width: 480px) {
-  .fab-cluster { right: 18px; bottom: 26px; gap: 12px; }
+  .fab-cluster { right: 18px; top: 18px; gap: 12px; }
   .fab { width: 46px; height: 46px; }
   .fab-windmill img { width: 24px; height: 24px; }
   .h-line { width: 17px; }
   .fab-item { width: 37px; height: 37px; }
   .card-grid.layout-phone { gap: 16px 6px; }
-  .engine-btn { height: 44px; padding: 0 12px; border-radius: 22px; font-size: 0.82rem; }
+  .engine-menu { width: 236px; }
   .grad-colors { flex-wrap: wrap; }
   .grad-colors .color-input { flex: 1 1 40%; }
   .settings-drawer { padding: 20px 18px 24px; }

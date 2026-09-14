@@ -5,6 +5,8 @@ import {
   LAYOUTS, loadLayout, saveLayout, emitLayout,
   loadGrid, saveGrid, emitGrid, pxToPct, pctToPx,
   loadFont, saveFont, applyFont,
+  loadSearch, saveSearch, applySearch,
+  loadHero, saveHero, applyHero,
 } from '../composables/usePrefs'
 
 const props = defineProps({
@@ -53,6 +55,80 @@ function pickFontColor(c) {
 
 function pickCustomFontColor(e) {
   pickFontColor(e.target.value)
+}
+
+// ---- 搜索框设置 ----
+const searchPrefs = ref(loadSearch())
+
+function onSearchChange() {
+  searchPrefs.value = { ...searchPrefs.value }
+  saveSearch(searchPrefs.value)
+  applySearch(searchPrefs.value)
+  window.dispatchEvent(new CustomEvent('search-changed', { detail: { ...searchPrefs.value } }))
+}
+
+// ---- 时间与名句 ----
+const HERO_COLORS = ['#ffffff', '#a5adc2', '#ff5d5d', '#ff9f43', '#ffd93d', '#6BCB77', '#54A0FF', '#A55EEA']
+const heroPrefs = ref(loadHero())
+const customClockColor = ref(heroPrefs.value.clockColor || '#ffffff')
+const customQuoteColor = ref(heroPrefs.value.quoteColor || '#a5adc2')
+
+function onHeroChange() {
+  heroPrefs.value = { ...heroPrefs.value }
+  saveHero(heroPrefs.value)
+  applyHero(heroPrefs.value)
+  window.dispatchEvent(new CustomEvent('hero-changed'))
+}
+
+function pickClockColor(c) {
+  heroPrefs.value.clockColor = c
+  customClockColor.value = c || '#ffffff'
+  onHeroChange()
+}
+
+function pickQuoteColor(c) {
+  heroPrefs.value.quoteColor = c
+  customQuoteColor.value = c || '#a5adc2'
+  onHeroChange()
+}
+
+// ---- 自定义搜索引擎管理 ----
+const CUSTOM_ENGINE_KEY = 'nav_custom_engines'
+const customEngines = ref(loadEngines())
+const newEngineName = ref('')
+const newEngineUrl = ref('')
+
+function loadEngines() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(CUSTOM_ENGINE_KEY))
+    return Array.isArray(raw) ? raw : []
+  } catch { return [] }
+}
+
+function persistEngines() {
+  try { localStorage.setItem(CUSTOM_ENGINE_KEY, JSON.stringify(customEngines.value)) } catch {}
+}
+
+function addEngineFromSettings() {
+  const n = newEngineName.value.trim()
+  let u = newEngineUrl.value.trim()
+  if (!n || !u) { showToast('请填写名称和搜索链接'); return }
+  if (!/\{q\}/.test(u)) u = u.includes('?') ? `${u}&q={q}` : `${u}{q}`
+  try { new URL(u.replace('{q}', 'test')) } catch { showToast('链接格式不正确'); return }
+  let icon = ''
+  try { icon = new URL(u.replace('{q}', '')).origin + '/favicon.ico' } catch {}
+  customEngines.value = [...customEngines.value, { id: 'ce-' + Date.now(), name: n, url: u, icon }]
+  persistEngines()
+  window.dispatchEvent(new CustomEvent('custom-engines-changed'))
+  newEngineName.value = ''
+  newEngineUrl.value = ''
+  showToast('搜索引擎已添加')
+}
+
+function removeEngineFromSettings(id) {
+  customEngines.value = customEngines.value.filter(e => e.id !== id)
+  persistEngines()
+  window.dispatchEvent(new CustomEvent('custom-engines-changed'))
 }
 
 // ---- 可视化渐变编辑器（无需写代码） ----
@@ -496,6 +572,143 @@ function pickImport() {
             <button v-if="font.color" class="font-reset" type="button" @click="pickFontColor('')">重置</button>
           </div>
           <p class="settings-hint">调整图标下方文字的大小、阴影与颜色，图标与文字始终保持间距</p>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>时间与名句</label>
+        <div class="font-setting">
+          <label class="switch-row">
+            <span class="switch-label">显示时间</span>
+            <input type="checkbox" v-model="heroPrefs.showClock" @change="onHeroChange">
+            <span class="switch" aria-hidden="true"></span>
+          </label>
+          <label class="switch-row">
+            <span class="switch-label">显示农历与节日</span>
+            <input type="checkbox" v-model="heroPrefs.showLunar" @change="onHeroChange">
+            <span class="switch" aria-hidden="true"></span>
+          </label>
+          <label class="switch-row">
+            <span class="switch-label">显示名句</span>
+            <input type="checkbox" v-model="heroPrefs.showQuote" @change="onHeroChange">
+            <span class="switch" aria-hidden="true"></span>
+          </label>
+          <label class="slider-row">
+            <span>时间字号</span>
+            <input type="range" min="28" max="120" step="1" v-model.number="heroPrefs.clockSize" @input="onHeroChange">
+            <b>{{ heroPrefs.clockSize }}px</b>
+          </label>
+          <div class="font-color-row">
+            <span class="font-color-label">时间颜色</span>
+            <div class="font-swatches">
+              <button
+                v-for="c in HERO_COLORS"
+                :key="c"
+                type="button"
+                class="font-swatch"
+                :class="{ selected: heroPrefs.clockColor === c }"
+                :style="{ background: c }"
+                :title="c"
+                @click="pickClockColor(c)"
+              ></button>
+              <label class="font-swatch custom" title="自定义颜色">
+                <input type="color" :value="customClockColor" @input="e => { heroPrefs.clockColor = e.target.value; customClockColor = e.target.value; onHeroChange() }">
+              </label>
+              <button v-if="heroPrefs.clockColor" class="font-reset" type="button" @click="pickClockColor('')">恢复渐变</button>
+            </div>
+          </div>
+          <label class="slider-row">
+            <span>名句字号</span>
+            <input type="range" min="12" max="30" step="1" v-model.number="heroPrefs.quoteSize" @input="onHeroChange">
+            <b>{{ heroPrefs.quoteSize }}px</b>
+          </label>
+          <div class="font-color-row">
+            <span class="font-color-label">名句颜色</span>
+            <div class="font-swatches">
+              <button
+                v-for="c in HERO_COLORS"
+                :key="'q' + c"
+                type="button"
+                class="font-swatch"
+                :class="{ selected: heroPrefs.quoteColor === c }"
+                :style="{ background: c }"
+                :title="c"
+                @click="pickQuoteColor(c)"
+              ></button>
+              <label class="font-swatch custom" title="自定义颜色">
+                <input type="color" :value="customQuoteColor" @input="e => { heroPrefs.quoteColor = e.target.value; customQuoteColor = e.target.value; onHeroChange() }">
+              </label>
+              <button v-if="heroPrefs.quoteColor" class="font-reset" type="button" @click="pickQuoteColor('')">重置</button>
+            </div>
+          </div>
+          <p class="settings-hint">名句显示在时间下方；农历行会自动显示节气与传统节日</p>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>搜索框</label>
+        <div class="font-setting">
+          <label class="switch-row">
+            <span class="switch-label">隐藏搜索框</span>
+            <input type="checkbox" v-model="searchPrefs.hidden" @change="onSearchChange">
+            <span class="switch" aria-hidden="true"></span>
+          </label>
+          <label class="switch-row">
+            <span class="switch-label">显示搜索建议</span>
+            <input type="checkbox" v-model="searchPrefs.suggestions" @change="onSearchChange">
+            <span class="switch" aria-hidden="true"></span>
+          </label>
+          <label class="switch-row">
+            <span class="switch-label">保留搜索框内容</span>
+            <input type="checkbox" v-model="searchPrefs.keepContent" @change="onSearchChange">
+            <span class="switch" aria-hidden="true"></span>
+          </label>
+          <label class="switch-row">
+            <span class="switch-label">隐藏搜索类别</span>
+            <input type="checkbox" v-model="searchPrefs.hideCategory" @change="onSearchChange">
+            <span class="switch" aria-hidden="true"></span>
+          </label>
+          <label class="switch-row">
+            <span class="switch-label">隐藏搜索按钮</span>
+            <input type="checkbox" v-model="searchPrefs.hideButton" @change="onSearchChange">
+            <span class="switch" aria-hidden="true"></span>
+          </label>
+          <label class="slider-row">
+            <span>搜索框大小</span>
+            <input type="range" min="50" max="150" step="1" v-model.number="searchPrefs.size" @input="onSearchChange">
+            <b>{{ searchPrefs.size }}%</b>
+          </label>
+          <label class="slider-row">
+            <span>搜索框圆角</span>
+            <input type="range" min="0" max="100" step="1" v-model.number="searchPrefs.radius" @input="onSearchChange">
+            <b>{{ searchPrefs.radius }}%</b>
+          </label>
+          <label class="slider-row">
+            <span>搜索框不透明度</span>
+            <input type="range" min="30" max="100" step="1" v-model.number="searchPrefs.opacity" @input="onSearchChange">
+            <b>{{ searchPrefs.opacity }}%</b>
+          </label>
+          <p class="settings-hint">圆角 100% 为胶囊形；不透明度越低搜索框越通透</p>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>自定义搜索引擎 <span class="label-hint">（搜索链接中用 {q} 表示关键词）</span></label>
+        <div class="engine-manager">
+          <div v-for="e in customEngines" :key="e.id" class="engine-row">
+            <img v-if="e.icon" :src="e.icon" alt="" class="engine-ico" @error="e2 => e2.target.style.visibility = 'hidden'">
+            <span v-else class="engine-ico fallback">{{ e.name.charAt(0) }}</span>
+            <div class="engine-info">
+              <div class="engine-name">{{ e.name }}</div>
+              <div class="engine-url">{{ e.url }}</div>
+            </div>
+            <button class="btn-text ghost trash-btn danger" @click="removeEngineFromSettings(e.id)">删除</button>
+          </div>
+          <div class="engine-add-row">
+            <input type="text" class="form-input" v-model="newEngineName" placeholder="名称">
+            <input type="text" class="form-input" v-model="newEngineUrl" placeholder="https://www.example.com/search?q={q}" @keydown.enter="addEngineFromSettings">
+            <button class="btn-text fetch-btn" @click="addEngineFromSettings">添加</button>
+          </div>
         </div>
       </div>
 

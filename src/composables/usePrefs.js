@@ -6,6 +6,8 @@ const LAYOUT_KEY = 'nav_layout'   // 'phone' | 'card' | 'list'
 const VIEW_KEY = 'nav_view'       // 'grid'  | 'alpha'
 const GRID_KEY = 'nav_grid'       // { rows, cols, size }
 const FONT_KEY = 'nav_font'       // { size, shadow, color }
+const SEARCH_KEY = 'nav_search'   // { hidden, suggestions, keepContent, hideCategory, hideButton, size, radius, opacity }
+const HERO_KEY = 'nav_hero'       // { showClock, showQuote, showLunar, clockSize, clockColor, quoteSize, quoteColor }
 
 export const LAYOUTS = [
   { id: 'phone', name: '图标' },
@@ -106,6 +108,102 @@ export function applyFont(f) {
   root.style.setProperty('--label-shadow', font.shadow ? '0 1px 4px rgba(0, 0, 0, 0.85), 0 0 2px rgba(0, 0, 0, 0.6)' : 'none')
   root.style.setProperty('--label-color', font.color || '')
   return font
+}
+
+// ---- Search box preferences ----
+export function defaultSearch() {
+  return {
+    hidden: false,        // 隐藏搜索框
+    suggestions: true,    // 显示搜索建议
+    keepContent: false,   // 保留搜索框内容
+    hideCategory: false,  // 隐藏搜索类别（引擎选择器）
+    hideButton: true,     // 隐藏搜索按钮
+    size: 100,            // 搜索框大小 %
+    radius: 100,          // 搜索框圆角 %（100 = 胶囊）
+    opacity: 100,         // 搜索框不透明度 %
+  }
+}
+
+export function loadSearch() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SEARCH_KEY))
+    if (!raw || typeof raw !== 'object') return defaultSearch()
+    const d = defaultSearch()
+    return {
+      hidden: !!raw.hidden,
+      suggestions: raw.suggestions === undefined ? d.suggestions : !!raw.suggestions,
+      keepContent: !!raw.keepContent,
+      hideCategory: !!raw.hideCategory,
+      hideButton: raw.hideButton === undefined ? d.hideButton : !!raw.hideButton,
+      size: clampN(raw.size, 50, 150, d.size),
+      radius: clampN(raw.radius, 0, 100, d.radius),
+      opacity: clampN(raw.opacity, 30, 100, d.opacity),
+    }
+  } catch { return defaultSearch() }
+}
+
+export function saveSearch(s) {
+  try { localStorage.setItem(SEARCH_KEY, JSON.stringify(s)) } catch {}
+}
+
+// Push search prefs into CSS custom properties on :root
+export function applySearch(s) {
+  const p = s || loadSearch()
+  const root = document.documentElement
+  root.style.setProperty('--sb-scale', String(p.size / 100))
+  root.style.setProperty('--sb-radius', String(p.radius / 100))
+  root.style.setProperty('--sb-opacity', String(p.opacity / 100))
+  return p
+}
+
+// ---- Hero (clock / lunar / quote) preferences ----
+export function defaultHero() {
+  return {
+    showClock: true,
+    showQuote: true,
+    showLunar: true,
+    clockSize: 74,        // px, 28-120
+    clockColor: '',       // '' = default gradient
+    quoteSize: 14,        // px, 12-30
+    quoteColor: '',       // '' = theme default
+  }
+}
+
+export function loadHero() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(HERO_KEY))
+    if (!raw || typeof raw !== 'object') return defaultHero()
+    const d = defaultHero()
+    return {
+      showClock: raw.showClock === undefined ? d.showClock : !!raw.showClock,
+      showQuote: raw.showQuote === undefined ? d.showQuote : !!raw.showQuote,
+      showLunar: raw.showLunar === undefined ? d.showLunar : !!raw.showLunar,
+      clockSize: clampN(raw.clockSize, 28, 120, d.clockSize),
+      clockColor: typeof raw.clockColor === 'string' ? raw.clockColor : '',
+      quoteSize: clampN(raw.quoteSize, 12, 30, d.quoteSize),
+      quoteColor: typeof raw.quoteColor === 'string' ? raw.quoteColor : '',
+    }
+  } catch { return defaultHero() }
+}
+
+export function saveHero(h) {
+  try { localStorage.setItem(HERO_KEY, JSON.stringify(h)) } catch {}
+}
+
+export function applyHero(h) {
+  const p = h || loadHero()
+  const root = document.documentElement
+  root.style.setProperty('--clock-size', `${p.clockSize}px`)
+  root.style.setProperty('--clock-color', p.clockColor || '')
+  root.style.setProperty('--quote-size', `${p.quoteSize}px`)
+  root.style.setProperty('--quote-color', p.quoteColor || '')
+  return p
+}
+
+function clampN(v, min, max, fallback) {
+  v = Number(v)
+  if (Number.isNaN(v)) return fallback
+  return Math.min(max, Math.max(min, Math.round(v)))
 }
 
 function clamp(v, min, max, fallback) {

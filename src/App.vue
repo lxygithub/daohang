@@ -2,7 +2,13 @@
 import { ref, computed, onMounted, onUnmounted, provide } from 'vue'
 import { useConfig, getStoredPassword, AUTH_KEY } from './composables/useConfig'
 import { useToast } from './composables/useToast'
-import { loadView, saveView, emitView, applyFont } from './composables/usePrefs'
+import {
+  loadView, saveView, emitView, applyFont,
+  loadSearch, saveSearch, applySearch,
+  loadHero, saveHero, applyHero,
+} from './composables/usePrefs'
+import solarlunar from 'solarlunar'
+const { solar2lunar, getFestivals } = solarlunar
 import NavGrid from './components/NavGrid.vue'
 import EditModal from './components/EditModal.vue'
 import SettingsModal from './components/SettingsModal.vue'
@@ -33,13 +39,35 @@ function toggleTheme() {
   try { localStorage.setItem(THEME_KEY, isLight.value ? 'light' : 'dark') } catch {}
 }
 
-// Clock & greeting
+// Clock, lunar calendar & greeting
 const timeText = ref('')
 const secText = ref('')
 const dateText = ref('')
 const greeting = ref('')
+const lunarText = ref('')
+const festivalText = ref('')
 const quote = ref(null)
 const quoteLoading = ref(false)
+
+// Solar festivals (lunar ones come from solarlunar.getFestivals)
+const SOLAR_FESTIVALS = {
+  '1-1': '元旦', '2-14': '情人节', '3-8': '妇女节', '5-1': '劳动节',
+  '6-1': '儿童节', '9-10': '教师节', '10-1': '国庆节', '12-25': '圣诞节',
+}
+
+function updateLunar(now) {
+  try {
+    const y = now.getFullYear(), m = now.getMonth() + 1, d = now.getDate()
+    const lunar = solar2lunar(y, m, d)
+    if (!lunar || lunar === -1) { lunarText.value = ''; return }
+    lunarText.value = `农历${lunar.gzYear}年${lunar.monthCn}${lunar.dayCn}`
+    const fests = [...new Set([...(getFestivals(y, m, d) || []), SOLAR_FESTIVALS[`${m}-${d}`] || ''].filter(Boolean))]
+    const tags = []
+    if (lunar.isTerm && lunar.term) tags.push(lunar.term)
+    tags.push(...fests)
+    festivalText.value = tags.join(' · ')
+  } catch { lunarText.value = '' }
+}
 
 // 一言
 async function fetchQuote() {
@@ -66,6 +94,7 @@ function updateClock() {
 
   const weekdays = ['日', '一', '二', '三', '四', '五', '六']
   dateText.value = `${now.getMonth() + 1}月${now.getDate()}日 星期${weekdays[now.getDay()]}`
+  updateLunar(now)
 
   const h = now.getHours()
   if (h < 5) greeting.value = '夜深了'
@@ -76,18 +105,41 @@ function updateClock() {
   else greeting.value = '晚上好'
 }
 
-// ---- Search engines ----
+// ---- Search engines (icon-based, custom engines supported) ----
 const ENGINES = [
-  { id: 'local', name: '本地', hint: '搜索服务…', url: '' },
-  { id: 'baidu', name: '百度', hint: '百度一下…', url: 'https://www.baidu.com/s?wd={q}' },
-  { id: 'bing', name: '必应', hint: '必应搜索…', url: 'https://www.bing.com/search?q={q}' },
-  { id: 'google', name: 'Google', hint: 'Google 搜索…', url: 'https://www.google.com/search?q={q}' },
-  { id: 'sogou', name: '搜狗', hint: '搜狗搜索…', url: 'https://www.sogou.com/web?query={q}' },
-  { id: 'ddg', name: 'DuckDuckGo', hint: 'DuckDuckGo 搜索…', url: 'https://duckduckgo.com/?q={q}' },
+  { id: 'local', name: '本地', hint: '搜索服务…', url: '', icon: '/engines/local.png' },
+  { id: 'baidu', name: '百度', hint: '百度一下…', url: 'https://www.baidu.com/s?wd={q}', icon: '/engines/baidu.png' },
+  { id: 'bing', name: '必应', hint: '必应搜索…', url: 'https://www.bing.com/search?q={q}', icon: '/engines/bing.png' },
+  { id: 'google', name: 'Google', hint: 'Google 搜索…', url: 'https://www.google.com/search?q={q}', icon: '/engines/google.png' },
+  { id: 'yahoo', name: 'Yahoo', hint: 'Yahoo 搜索…', url: 'https://search.yahoo.com/search?p={q}', icon: '/engines/yahoo.png' },
+  { id: 'yandex', name: 'Yandex', hint: 'Yandex 搜索…', url: 'https://yandex.com/search/?text={q}', icon: '/engines/yandex.png' },
 ]
 const ENGINE_KEY = 'nav_engine'
+const CUSTOM_ENGINE_KEY = 'nav_custom_engines'
+
+function loadCustomEngines() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(CUSTOM_ENGINE_KEY))
+    if (!Array.isArray(raw)) return []
+    return raw
+      .filter(e => e && e.id && e.name && e.url && e.url.includes('{q}'))
+      .map(e => ({ id: e.id, name: e.name, hint: `${e.name} 搜索…`, url: e.url, icon: e.icon || '', custom: true }))
+  } catch { return [] }
+}
+
+const customEngines = ref(loadCustomEngines())
+const allEngines = computed(() => [...ENGINES, ...customEngines.value])
+
+function reloadCustomEngines() {
+  customEngines.value = loadCustomEngines()
+  if (!allEngines.value.some(e => e.id === engineId.value)) {
+    engineId.value = 'local'
+    try { localStorage.setItem(ENGINE_KEY, 'local') } catch {}
+  }
+}
+
 const engineId = ref(localStorage.getItem(ENGINE_KEY) || 'local')
-const engine = computed(() => ENGINES.find(e => e.id === engineId.value) || ENGINES[0])
+const engine = computed(() => allEngines.value.find(e => e.id === engineId.value) || ENGINES[0])
 const showEngineMenu = ref(false)
 
 function selectEngine(id) {
@@ -97,19 +149,126 @@ function selectEngine(id) {
   searchInputRef.value?.focus()
 }
 
+function persistCustomEngines() {
+  try {
+    localStorage.setItem(CUSTOM_ENGINE_KEY, JSON.stringify(
+      customEngines.value.map(e => ({ id: e.id, name: e.name, url: e.url, icon: e.icon || '' }))
+    ))
+  } catch {}
+}
+
+function addCustomEngine(name, url) {
+  const n = (name || '').trim()
+  let u = (url || '').trim()
+  if (!n || !u) return '请填写名称和搜索链接'
+  if (!/\{q\}/.test(u)) {
+    // Auto-append the {q} placeholder for plain result-page URLs
+    u = u.includes('?') ? `${u}&q={q}` : `${u}{q}`
+  }
+  try { new URL(u.replace('{q}', 'test')) } catch { return '链接格式不正确' }
+  const id = 'ce-' + Date.now()
+  // Try the site favicon for the menu icon
+  let icon = ''
+  try { icon = new URL(u.replace('{q}', '')).origin + '/favicon.ico' } catch {}
+  customEngines.value = [...customEngines.value, { id, name: n, hint: `${n} 搜索…`, url: u, icon, custom: true }]
+  persistCustomEngines()
+  return ''
+}
+
+function removeCustomEngine(id) {
+  customEngines.value = customEngines.value.filter(e => e.id !== id)
+  persistCustomEngines()
+  if (engineId.value === id) selectEngine('local')
+}
+
+// Inline add-engine form inside the dropdown
+const addingEngine = ref(false)
+const newEngineName = ref('')
+const newEngineUrl = ref('')
+
+function submitCustomEngine() {
+  const err = addCustomEngine(newEngineName.value, newEngineUrl.value)
+  if (err) { showToast(err); return }
+  newEngineName.value = ''
+  newEngineUrl.value = ''
+  addingEngine.value = false
+  showToast('搜索引擎已添加')
+}
+
+// ---- Search box preferences (hidden / suggestions / button / category) ----
+const searchPrefs = ref(loadSearch())
+
+function onSearchPrefsChanged(e) {
+  searchPrefs.value = { ...loadSearch(), ...(e.detail || {}) }
+  applySearch(searchPrefs.value)
+  if (searchPrefs.value.hidden) showEngineMenu.value = false
+}
+
+// ---- Hero preferences (clock / lunar / quote visibility & styling) ----
+const heroPrefs = ref(loadHero())
+
+function onHeroPrefsChanged() {
+  heroPrefs.value = loadHero()
+  applyHero(heroPrefs.value)
+}
+
+function persistSearchQuery() {
+  try {
+    if (searchPrefs.value.keepContent) localStorage.setItem('nav_search_query', searchQuery.value)
+    else localStorage.removeItem('nav_search_query')
+  } catch {}
+}
+
+const effectiveFilter = computed(() =>
+  engine.value.id === 'local' ? searchQuery.value : ''
+)
+
+// Search suggestions: local matches + direct-search action
+const showSuggestions = computed(() =>
+  searchPrefs.value.suggestions &&
+  !searchPrefs.value.hidden &&
+  searchQuery.value.trim().length > 0
+)
+
+const suggestionMatches = computed(() => {
+  const q = searchQuery.value.trim().toLowerCase()
+  if (!q || !config.value) return []
+  return (config.value.services || [])
+    .filter(s => s.name.toLowerCase().includes(q) || (s.group || '').toLowerCase().includes(q))
+    .slice(0, 5)
+})
+
+function openServiceDirect(svc) {
+  searchQuery.value = ''
+  persistSearchQuery()
+  window.dispatchEvent(new CustomEvent('open-service-by-id', { detail: svc.id }))
+}
+
+function applySuggestion() {
+  handleSearchEnter()
+  showEngineMenu.value = false
+}
+
 // Keyboard shortcut: "/" focuses search
 function handleKeydown(e) {
   if (e.key === 'Escape') {
     if (editMode.value) { editMode.value = false; return }
     if (fabMenuOpen.value) { fabMenuOpen.value = false; return }
+    if (addingEngine.value) { addingEngine.value = false; return }
     showEngineMenu.value = false
     return
   }
   if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return
+  if (searchPrefs.value.hidden) return
   const tag = document.activeElement?.tagName
   if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return
   e.preventDefault()
   searchInputRef.value?.focus()
+}
+
+function handleOpenServiceById(e) {
+  const svc = config.value?.services?.find(s => s.id === e.detail)
+  if (svc) window.open(svc.url, '_blank')
 }
 
 // Enter in search:
@@ -306,12 +465,22 @@ onMounted(async () => {
   window.addEventListener('keydown', handleKeydown)
   window.addEventListener('apply-background', applyBackground)
   window.addEventListener('click', handleDocClick, true)
+  window.addEventListener('search-changed', onSearchPrefsChanged)
+  window.addEventListener('hero-changed', onHeroPrefsChanged)
+  window.addEventListener('custom-engines-changed', reloadCustomEngines)
+  window.addEventListener('open-service-by-id', handleOpenServiceById)
   // 会话内记住验证状态，刷新无需重复输密码
   if (getStoredPassword()) verified.value = true
   let savedLight = false
   try { savedLight = localStorage.getItem(THEME_KEY) === 'light' } catch {}
   applyTheme(savedLight)
   applyFont()
+  applySearch()
+  applyHero()
+  // 保留搜索框内容：恢复上次输入
+  if (searchPrefs.value.keepContent) {
+    try { searchQuery.value = localStorage.getItem('nav_search_query') || '' } catch {}
+  }
   fetchQuote()
   await loadConfig()
   applyBackground()
@@ -324,6 +493,10 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
   window.removeEventListener('apply-background', applyBackground)
   window.removeEventListener('click', handleDocClick, true)
+  window.removeEventListener('search-changed', onSearchPrefsChanged)
+  window.removeEventListener('hero-changed', onHeroPrefsChanged)
+  window.removeEventListener('custom-engines-changed', reloadCustomEngines)
+  window.removeEventListener('open-service-by-id', handleOpenServiceById)
 })
 </script>
 
@@ -342,38 +515,77 @@ onUnmounted(() => {
   <!-- Page -->
   <main class="page">
     <section class="hero">
-      <div class="clock">
-        <span class="clock-time">{{ timeText }}</span>
-        <span class="clock-sec">{{ secText }}</span>
+      <template v-if="heroPrefs.showClock">
+        <div class="clock">
+          <span class="clock-time" :class="{ 'plain-color': !!heroPrefs.clockColor }">{{ timeText }}</span>
+          <span class="clock-sec">{{ secText }}</span>
+        </div>
+        <div class="hero-meta">
+          <span>{{ dateText }}</span>
+          <template v-if="heroPrefs.showLunar && lunarText">
+            <span class="sep">·</span>
+            <span class="lunar">{{ lunarText }}</span>
+          </template>
+          <template v-if="heroPrefs.showLunar && festivalText">
+            <span class="sep">·</span>
+            <span class="festival">{{ festivalText }}</span>
+          </template>
+          <span class="sep">·</span>
+          <span class="greeting">{{ greeting }}</span>
+        </div>
+      </template>
+      <!-- 名句位于时间下方、搜索框上方 -->
+      <div
+        v-if="heroPrefs.showQuote && quote"
+        class="quote"
+        title="点击换一句"
+        @click="fetchQuote"
+      >
+        <span class="quote-text">「{{ quote.text }}」</span>
+        <span v-if="quote.from" class="quote-from">—— {{ quote.from }}</span>
       </div>
-      <div class="hero-meta">
-        <span>{{ dateText }}</span>
-        <span class="sep">·</span>
-        <span class="greeting">{{ greeting }}</span>
-      </div>
-      <form autocomplete="off" class="search-box" @submit.prevent>
-        <div class="engine-anchor">
+      <form v-if="!searchPrefs.hidden" autocomplete="off" class="search-box" @submit.prevent>
+        <div v-if="!searchPrefs.hideCategory" class="engine-anchor">
           <button type="button" class="engine-btn" :title="`搜索引擎：${engine.name}`" @click.stop="showEngineMenu = !showEngineMenu">
-            <span class="engine-dot" v-if="engine.id !== 'local'"></span>{{ engine.name }}
+            <img v-if="engine.icon" class="engine-icon" :src="engine.icon" alt="" @error="e => e.target.style.display = 'none'">
+            <span v-else class="engine-dot"></span>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="6 9 12 15 18 9"/>
             </svg>
           </button>
           <transition name="menu-pop">
             <div v-if="showEngineMenu" class="engine-menu" @click.stop>
-              <button
-                v-for="e in ENGINES"
-                :key="e.id"
-                type="button"
-                class="engine-item"
-                :class="{ active: e.id === engineId }"
-                @click="selectEngine(e.id)"
-              >
-                <span>{{ e.name }}</span>
-                <svg v-if="e.id === engineId" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="20 6 9 17 4 12"/>
-                </svg>
-              </button>
+              <div class="engine-grid">
+                <button
+                  v-for="e in allEngines"
+                  :key="e.id"
+                  type="button"
+                  class="engine-cell"
+                  :class="{ active: e.id === engineId }"
+                  :title="e.name"
+                  @click="selectEngine(e.id)"
+                >
+                  <img v-if="e.icon" :src="e.icon" alt="" @error="e2 => e2.target.replaceWith(Object.assign(document.createElement('span'), { className: 'engine-fallback', textContent: e.name.charAt(0) }))">
+                  <span v-else class="engine-fallback">{{ e.name.charAt(0) }}</span>
+                  <svg v-if="e.id === engineId" class="engine-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                  </svg>
+                </button>
+                <button type="button" class="engine-cell add" title="添加自定义搜索引擎" @click="addingEngine = !addingEngine">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                    <line x1="12" y1="5" x2="12" y2="19"/>
+                    <line x1="5" y1="12" x2="19" y2="12"/>
+                  </svg>
+                </button>
+              </div>
+              <div v-if="addingEngine" class="engine-add-form" @keydown.enter.prevent="submitCustomEngine">
+                <input type="text" v-model="newEngineName" placeholder="名称，如：知乎">
+                <input type="text" v-model="newEngineUrl" placeholder="搜索链接，用 {q} 表示关键词">
+                <div class="engine-add-actions">
+                  <button type="button" class="btn-text ghost" @click="addingEngine = false">取消</button>
+                  <button type="button" class="btn-text primary" @click="submitCustomEngine">添加</button>
+                </div>
+              </div>
             </div>
           </transition>
         </div>
@@ -386,17 +598,42 @@ onUnmounted(() => {
           @focus="e => e.target.removeAttribute('readonly')"
           @blur="e => !e.target.value && e.target.setAttribute('readonly', '')"
           @keydown.enter="handleSearchEnter"
+          @input="persistSearchQuery"
         >
+        <button
+          v-if="!searchPrefs.hideButton"
+          type="button"
+          class="search-submit"
+          title="搜索"
+          @click="handleSearchEnter"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+            <circle cx="11" cy="11" r="7"/>
+            <line x1="21" y1="21" x2="16.2" y2="16.2"/>
+          </svg>
+        </button>
+        <transition name="menu-pop">
+          <div v-if="showSuggestions" class="search-suggest">
+            <button
+              v-for="svc in suggestionMatches"
+              :key="svc.id"
+              type="button"
+              class="suggest-item"
+              @mousedown.prevent="openServiceDirect(svc)"
+            >
+              <span class="suggest-name">{{ svc.name }}</span>
+              <span class="suggest-host">{{ svc.url }}</span>
+            </button>
+            <button type="button" class="suggest-item search" @mousedown.prevent="applySuggestion">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                <circle cx="11" cy="11" r="7"/>
+                <line x1="21" y1="21" x2="16.2" y2="16.2"/>
+              </svg>
+              <span class="suggest-name">使用 {{ engine.name }} 搜索「{{ searchQuery.trim() }}」</span>
+            </button>
+          </div>
+        </transition>
       </form>
-      <div
-        v-if="quote"
-        class="quote"
-        title="点击换一句"
-        @click="fetchQuote"
-      >
-        <span class="quote-text">「{{ quote.text }}」</span>
-        <span v-if="quote.from" class="quote-from">—— {{ quote.from }}</span>
-      </div>
     </section>
 
     <div v-if="loading" class="state-wrap">
@@ -409,7 +646,7 @@ onUnmounted(() => {
     <NavGrid
       v-else
       :services="config.services || []"
-      :filter="searchQuery"
+      :filter="effectiveFilter"
       :view="viewMode"
       @reordered="saveConfig"
     />

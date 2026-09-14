@@ -1,6 +1,5 @@
 <script setup>
 import { ref, watch, computed, inject } from 'vue'
-import { ICONS } from '../data/icons'
 import ImageCropper from './ImageCropper.vue'
 
 const props = defineProps({
@@ -17,7 +16,6 @@ const name = ref('')
 const url = ref('')
 const group = ref('')
 const iconUrl = ref('')
-const selectedIcon = ref('server')
 const faviconPreview = ref('')
 const fetchingFavicon = ref(false)
 const cropFile = ref(null)
@@ -42,7 +40,6 @@ const groupOptions = computed(() => {
 
 watch(() => props.visible, (val) => {
   if (!val) return
-  selectedIcon.value = 'server'
   faviconPreview.value = ''
   nameTouched.value = false
   lastNameAuto = ''
@@ -56,9 +53,6 @@ watch(() => props.visible, (val) => {
       group.value = svc.group || ''
       iconUrl.value = svc.iconType === 'url' ? svc.icon : ''
       if (iconUrl.value) faviconPreview.value = iconUrl.value
-      // Emoji / custom text icons are legacy now — treat as no explicit icon;
-      // they fall back to the solid text icon unless a new one is picked.
-      selectedIcon.value = svc.iconType === 'preset' && ICONS[svc.icon] ? svc.icon : 'server'
     }
   } else {
     name.value = ''
@@ -76,12 +70,6 @@ watch(url, (val) => {
   if (!u || !parseDomain(u)) return
   autoFetchTimer = setTimeout(() => autoFetch(true), 800)
 })
-
-function selectIcon(key) {
-  selectedIcon.value = key
-  iconUrl.value = ''
-  faviconPreview.value = ''
-}
 
 function parseDomain(u) {
   try {
@@ -119,7 +107,6 @@ async function autoFetch(silent = false) {
     if (data.icon) {
       iconUrl.value = data.icon
       faviconPreview.value = data.icon
-      selectedIcon.value = ''
       got = true
     }
     if (!silent) {
@@ -147,7 +134,6 @@ function pickFile() {
 
 function onCropDone(dataUrl) {
   iconUrl.value = dataUrl
-  selectedIcon.value = ''
   faviconPreview.value = dataUrl
   showCropper.value = false
   cropFile.value = null
@@ -180,12 +166,8 @@ function save() {
     // 自动获取或用户上传的图标
     svc.iconType = 'url'
     svc.icon = iu
-  } else if (selectedIcon.value && ICONS[selectedIcon.value]) {
-    // 手动选择的 SVG 预设图标
-    svc.iconType = 'preset'
-    svc.icon = selectedIcon.value
   }
-  // 两者都没有 → 不写入图标字段，列表以纯色背景文字图标展示
+  // 没有图标 → 不写入图标字段，列表以纯色背景文字图标展示
 
   ensureVerified(() => {
     if (props.editIndex >= 0) {
@@ -249,20 +231,6 @@ function handleOverlayClick(e) {
       </div>
       <div class="form-group">
         <label>图标 <span class="label-hint">（未选择时显示纯色背景文字图标）</span></label>
-        <div class="icon-picker-container">
-          <div class="icon-picker-grid">
-            <div
-              v-for="(svg, key) in ICONS"
-              :key="key"
-              class="icon-picker-item"
-              :class="{ selected: selectedIcon === key && !iconUrl }"
-              @click="selectIcon(key)"
-            >
-              <span v-html="svg"></span>
-              <span>{{ key }}</span>
-            </div>
-          </div>
-        </div>
         <div class="custom-icon-panel">
           <button class="btn-text upload-btn" @click="pickFile">上传图标</button>
           <input type="text" class="form-input" v-model="iconUrl" placeholder="或输入图片 URL">
