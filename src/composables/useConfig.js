@@ -17,7 +17,7 @@ function getDefaultConfig() {
       { id: 'wireguard', name: 'WireGuard', url: 'http://106.75.241.220:51821/', iconType: 'preset', icon: 'lock' },
       { id: 'gh-proxy', name: 'GH-Proxy', url: 'https://gh-proxy.ieoc.top/', iconType: 'preset', icon: 'link' },
     ],
-    background: { type: 'color', value: '#181818' },
+    background: { type: 'color', value: '#0d1017' },
   }
 }
 

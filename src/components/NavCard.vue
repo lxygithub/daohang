@@ -1,5 +1,5 @@
 <script setup>
-import { inject } from 'vue'
+import { computed, inject } from 'vue'
 import { ICONS } from '../data/icons'
 
 const props = defineProps({
@@ -9,6 +9,28 @@ const props = defineProps({
 
 const emit = defineEmits(['open'])
 const openEditModal = inject('openEditModal')
+
+// Deterministic hue from service name → per-card icon tint
+const hue = computed(() => {
+  let h = 0
+  for (const ch of props.service.name) {
+    h = (h * 31 + (ch.codePointAt(0) || 0)) % 360
+  }
+  // Map to a pleasing range, avoid muddy yellows
+  return (h * 7) % 360
+})
+
+// Host subtitle from url
+const host = computed(() => {
+  try {
+    const u = new URL(
+      props.service.url.includes('://') ? props.service.url : 'https://' + props.service.url
+    )
+    return u.hostname.replace(/^www\./, '') + (u.port ? ':' + u.port : '')
+  } catch {
+    return props.service.url
+  }
+})
 
 function handleClick(e) {
   if (e.target.closest('.card-action-btn')) return
@@ -68,8 +90,9 @@ function handleDrop(e) {
 <template>
   <div
     class="card"
-    :style="{ animationDelay: `${index * 0.04}s` }"
+    :style="{ animationDelay: `${Math.min(index * 0.04, 0.5)}s` }"
     draggable="true"
+    :title="service.url"
     @click="handleClick"
     @dragstart="handleDragStart"
     @dragend="handleDragEnd"
@@ -78,7 +101,7 @@ function handleDrop(e) {
     @dragleave="handleDragLeave"
     @drop="handleDrop"
   >
-    <div class="card-icon">
+    <div class="card-icon" :style="{ '--h': hue }">
       <img
         v-if="service.iconType === 'url' && service.icon"
         :src="service.icon"
@@ -87,7 +110,10 @@ function handleDrop(e) {
       <span v-else-if="service.iconType === 'emoji'" class="card-icon-emoji">{{ service.icon }}</span>
       <span v-else v-html="ICONS[service.icon] || ICONS.server"></span>
     </div>
-    <div class="card-name" :title="service.url">{{ service.name }}</div>
+    <div class="card-meta">
+      <div class="card-name">{{ service.name }}</div>
+      <div class="card-host">{{ host }}</div>
+    </div>
     <div class="card-actions">
       <button class="card-action-btn" title="编辑" @click="handleEdit">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

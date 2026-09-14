@@ -14,20 +14,39 @@ const { config, loading, loadConfig, saveConfig } = useConfig()
 const { message: toastMessage, visible: toastVisible, showToast } = useToast()
 
 const searchQuery = ref('')
+const searchInputRef = ref(null)
 
-// Clock
-const clockText = ref('')
-let clockTimer = null
+// Clock & greeting
+const timeText = ref('')
+const secText = ref('')
+const dateText = ref('')
+const greeting = ref('')
 
 function updateClock() {
   const now = new Date()
-  const d = now.toLocaleDateString('zh-CN', {
-    year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',
-  })
-  const t = now.toLocaleTimeString('zh-CN', {
-    hour: '2-digit', minute: '2-digit', second: '2-digit',
-  })
-  clockText.value = `${d} ${t}`
+  const pad = n => String(n).padStart(2, '0')
+  timeText.value = `${pad(now.getHours())}:${pad(now.getMinutes())}`
+  secText.value = pad(now.getSeconds())
+
+  const weekdays = ['日', '一', '二', '三', '四', '五', '六']
+  dateText.value = `${now.getMonth() + 1}月${now.getDate()}日 星期${weekdays[now.getDay()]}`
+
+  const h = now.getHours()
+  if (h < 5) greeting.value = '夜深了'
+  else if (h < 9) greeting.value = '早上好'
+  else if (h < 12) greeting.value = '上午好'
+  else if (h < 14) greeting.value = '中午好'
+  else if (h < 18) greeting.value = '下午好'
+  else greeting.value = '晚上好'
+}
+
+// Keyboard shortcut: "/" focuses search
+function handleKeydown(e) {
+  if (e.key !== '/' || e.metaKey || e.ctrlKey || e.altKey) return
+  const tag = document.activeElement?.tagName
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return
+  e.preventDefault()
+  searchInputRef.value?.focus()
 }
 
 // Password verification
@@ -97,51 +116,94 @@ provide('openEditModal', openEditModal)
 onMounted(async () => {
   updateClock()
   clockTimer = setInterval(updateClock, 1000)
+  window.addEventListener('keydown', handleKeydown)
   await loadConfig()
   applyBackground()
 })
 
+let clockTimer = null
+
 onUnmounted(() => {
   if (clockTimer) clearInterval(clockTimer)
+  window.removeEventListener('keydown', handleKeydown)
 })
 </script>
 
 <template>
-  <header class="header">
-    <div class="header-left">
-      <h1>导航</h1>
-      <div class="clock">{{ clockText }}</div>
+  <!-- Aurora decoration -->
+  <div class="bg-decor" aria-hidden="true">
+    <div class="aurora aurora-1"></div>
+    <div class="aurora aurora-2"></div>
+    <div class="aurora aurora-3"></div>
+    <div class="noise"></div>
+  </div>
+
+  <!-- Topbar -->
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <span class="brand-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>
+          </svg>
+        </span>
+        <span class="brand-name">导航</span>
+      </div>
+      <div class="topbar-actions">
+        <button class="icon-btn" title="新增服务" @click="openAddModal">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="12" y1="5" x2="12" y2="19"/>
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+        </button>
+        <button class="icon-btn" title="设置" @click="showSettingsModal = true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </button>
+      </div>
     </div>
-    <div class="header-actions">
-      <form autocomplete="off" @submit.prevent>
+  </header>
+
+  <!-- Page -->
+  <main class="page">
+    <section class="hero">
+      <div class="clock">
+        <span class="clock-time">{{ timeText }}</span>
+        <span class="clock-sec">{{ secText }}</span>
+      </div>
+      <div class="hero-meta">
+        <span>{{ dateText }}</span>
+        <span class="sep">·</span>
+        <span class="greeting">{{ greeting }}</span>
+      </div>
+      <form autocomplete="off" class="search-box" @submit.prevent>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="8"/>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
         <input
+          ref="searchInputRef"
           type="text"
-          class="search-input"
           v-model="searchQuery"
-          placeholder="搜索..."
+          placeholder="搜索服务…"
           readonly
           @focus="e => e.target.removeAttribute('readonly')"
           @blur="e => !e.target.value && e.target.setAttribute('readonly', '')"
         >
+        <kbd v-if="!searchQuery">/</kbd>
       </form>
-      <button class="btn" title="新增" @click="openAddModal">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-          <line x1="12" y1="5" x2="12" y2="19"/>
-          <line x1="5" y1="12" x2="19" y2="12"/>
-        </svg>
-      </button>
-      <button class="btn" title="设置" @click="showSettingsModal = true">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="12" r="3"/>
-          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-        </svg>
-      </button>
-    </div>
-  </header>
+    </section>
 
-  <main class="main-content">
-    <div v-if="loading" style="text-align:center;padding:60px 0;color:#666">加载中...</div>
-    <div v-else-if="!config" style="text-align:center;padding:60px 0;color:#666">加载失败</div>
+    <div v-if="loading" class="state-wrap">
+      <div class="spinner"></div>
+      <div>正在加载…</div>
+    </div>
+    <div v-else-if="!config" class="state-wrap">
+      <div>加载失败，请刷新重试</div>
+    </div>
     <NavGrid
       v-else
       :services="config.services || []"
@@ -175,5 +237,5 @@ onUnmounted(() => {
 
   <Toast :message="toastMessage" :visible="toastVisible" />
 
-  <footer class="version-bar">Build：{{ buildTime }}</footer>
+  <footer class="version-bar">Build · {{ buildTime }}</footer>
 </template>

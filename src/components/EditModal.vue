@@ -254,7 +254,15 @@ function handleOverlayClick(e) {
 <template>
   <div class="modal-overlay" :class="{ active: visible }" @click="handleOverlayClick">
     <div class="modal">
-      <h2>{{ modalTitle }}</h2>
+      <div class="modal-header">
+        <h2>{{ modalTitle }}</h2>
+        <button class="modal-close" title="关闭" @click="emit('close')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
       <div class="form-group">
         <label>名称</label>
         <input type="text" class="form-input" v-model="name" placeholder="服务名称">
@@ -332,9 +340,9 @@ function handleOverlayClick(e) {
             </div>
           </div>
         </div>
-        <div style="margin-top:12px;display:flex;gap:10px;align-items:center">
+        <div class="custom-icon-panel">
           <button class="btn-text upload-btn" @click="pickFile">上传图标</button>
-          <input type="text" class="form-input" v-model="iconUrl" placeholder="或输入图片URL" style="flex:1">
+          <input type="text" class="form-input" v-model="iconUrl" placeholder="或输入图片 URL">
           <img v-if="faviconPreview" :src="faviconPreview" class="favicon-preview" @error="faviconPreview = ''">
         </div>
       </div>
