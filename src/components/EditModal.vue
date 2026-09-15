@@ -232,10 +232,6 @@ function handleOverlayClick(e) {
         </button>
       </div>
       <div class="form-group">
-        <label>名称</label>
-        <input type="text" class="form-input" v-model="name" placeholder="服务名称" @input="nameTouched = true">
-      </div>
-      <div class="form-group">
         <label>链接 <span class="label-hint">（粘贴后自动识别名称与图标）</span></label>
         <div class="input-row">
           <input type="text" class="form-input" v-model="url" placeholder="粘贴链接，如 github.com">
@@ -246,6 +242,10 @@ function handleOverlayClick(e) {
             :disabled="fetchingFavicon"
           >{{ fetchingFavicon ? '获取中…' : '自动获取' }}</button>
         </div>
+      </div>
+      <div class="form-group">
+        <label>名称</label>
+        <input type="text" class="form-input" v-model="name" placeholder="服务名称" @input="nameTouched = true">
       </div>
       <div class="form-group">
         <label>分组 <span class="label-hint">（可选，同组服务归类显示）</span></label>
