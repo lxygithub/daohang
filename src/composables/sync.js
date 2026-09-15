@@ -267,6 +267,29 @@ export async function resetPassword(email, code, newPassword) {
   } catch { return { ok: false, error: '网络异常，请稍后再试', message: '' } }
 }
 
+// ---- image bed（图标/壁纸上传到自建图床换外链，避免 base64 内联） ----
+
+// 探测图床是否已配置（服务端 IMG_UPLOAD_API）；未配置时前端沿用 base64 内联
+export async function probeImageBed() {
+  try {
+    const res = await fetch('/api/upload')
+    if (!res.ok) return false
+    const d = await res.json().catch(() => ({}))
+    return !!d.enabled
+  } catch { return false }
+}
+
+export async function uploadImage(file) {
+  try {
+    const fd = new FormData()
+    fd.append('file', file, file.name || 'image.png')
+    const res = await fetch('/api/upload', { method: 'POST', body: fd })
+    if (res.status === 401) { authed.value = false; return { ok: false, error: '请先登录' } }
+    const d = await res.json().catch(() => ({}))
+    return { ok: res.ok && !!d.url, url: d.url || '', error: d.error || '' }
+  } catch { return { ok: false, error: '网络异常，请稍后再试' } }
+}
+
 // ---- admin ----
 
 async function sendAdmin(path, body) {

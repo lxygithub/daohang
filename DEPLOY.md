@@ -33,6 +33,10 @@ Pages 项目配置 `pages_build_output_dir` 后改由 `wrangler.toml` 统一管�
 | `ADMIN_PASSWORD_SHA256` | 明文 | wrangler.toml `[vars]` | 二选一 | 管理密码的 sha256 十六进制值（弱等价形式，仍建议优先用机密） |
 | `BREVO_API_KEY` | 机密 | 仪表板加密 | 用发信则必填 | Brevo API key，`xkeysib-` 开头 |
 | `RESEND_API_KEY` | 机密 | 仪表板加密 | 否 | 可选备用通道，仅当未配置 BREVO_API_KEY 时启用 |
+| `IMG_UPLOAD_API` | 明文 | wrangler.toml `[vars]` | 否 | 自建图床上传接口 URL，配置后上传图标自动转外链（见下节） |
+| `IMG_UPLOAD_FIELD` | 明文 | wrangler.toml `[vars]` | 否 | 图床 multipart 文件字段名，默认 `file` |
+| `IMG_UPLOAD_TOKEN` | 机密 | 仪表板加密 | 否 | 图床鉴权，以 `Authorization: Bearer` 发送 |
+| `IMG_UPLOAD_QUERY` | 机密 | 仪表板加密 | 否 | 图床查询串鉴权（如 `token=xxx`） |
 
 注意：修改 `[vars]` 后需要重新部署（push 一次或在 Pages 控制台 Retry deploy）才会生效；机密同理。
 
@@ -53,7 +57,21 @@ Brevo 免费档每天可发 300 封交易邮件，**无需验证自有域名**�
 - 想提升到达率：在 Brevo 验证自有域名（添加 SPF/DKIM DNS 记录），发件人换成 `noreply@你的域名`。
 - 本地开发不必配真实 key，用 `scripts/mock-resend.mjs` 模拟即可（见 README「本地开发」）。
 
-## 四、D1 数据库
+## 四、自建图床上传（可选）
+
+编辑弹窗「上传图标」默认把图片裁剪后以 base64 内联进配置 JSON，图标多了会让配置变大。若你已自建图床（如基于 Telegram Bot 的开源项目），配置以下变量后，上传会自动改为先传图床、把返回的外链 URL 存进配置：
+
+1. `IMG_UPLOAD_API`（明文，`[vars]`）：图床上传接口完整 URL，如 `https://img.example.com/upload`。
+2. `IMG_UPLOAD_FIELD`（明文，可选）：multipart 文件字段名，默认 `file`。
+3. 鉴权（按你图床的要求二选一，均放仪表板加密机密）：`IMG_UPLOAD_TOKEN`（Bearer 头）或 `IMG_UPLOAD_QUERY`（查询串，如 `token=xxx`）。
+
+约定与容错：
+
+- 接口约定为 `POST multipart/form-data`，响应 JSON（或纯文本）中包含图片 URL 即可；解析器会递归寻找 `url / link / src / path` 等常见键，兼容绝大多数开源图床。
+- 上传接口需登录会话才可调用（防匿名滥用）；单文件限 8MB、仅图片。
+- 未配置 `IMG_UPLOAD_API` 或上传失败时，前端自动回退为 base64 内联保存，功能永不阻断；已保存的 base64 图标照常渲染，无需迁移。
+
+## 五、D1 数据库
 
 **建表与迁移**：应用内置幂等的 `ensureSchema()`——任何 auth/config 接口首次被访问时自动创建 `users / sessions / user_data / pwd_resets / nav_config` 五张表，并对老库自动补列（如 `users.disabled`）。因此 git 推送部署即可，通常不需要手动迁移；如需手动执行：`npm run db:migrate`。
 
@@ -68,18 +86,18 @@ npm run db:import     # 备份 → D1；可生成 PostgreSQL / MySQL / SQLite �
 
 **换库**：全部 SQL 收敛在 `functions/lib/db.js` 单适配层，使用标准 SQLite 方言与 ISO-8601 文本时间戳，迁移到其他 SQLite 兼容库成本最低。
 
-## 五、管理员
+## 六、管理员
 
 - 管理员 = `ADMIN_EMAILS` 中列出的邮箱。用该邮箱**注册/登录**后，用户菜单出现「用户管理」入口。
 - 用户管理支持：邮箱搜索、查看每用户会话/偏好数、重置密码（强制改密并踢全部设备）、禁用/启用（禁用即刻全端下线且无法登录、无法找回密码）、删除（事务级联清理，不可恢复）。
 - 管理员账号（含自己）不可被禁用或删除，前端按钮与服务端双重保护。
 - 回退行为：`ADMIN_PASSWORD` 与 `ADMIN_PASSWORD_SHA256` 都未配置时，服务端回退内置默认密码（与历史仓库一致）——**首次部署后请立刻在仪表板配置加密机密**。
 
-## 六、自定义域名（可选）
+## 七、自定义域名（可选）
 
 Pages 项目 → Custom domains → Set up a custom domain，按提示在域名 DNS 处添加 CNAME 记录指向 `你的项目.pages.dev`，证书自动签发。国内访问建议套一层自选优选 CDN 或使用已备案域名直连。
 
-## 七、常见问题（FAQ）
+## 八、常见问题（FAQ）
 
 **没收到验证码邮件？**
 按顺序排查：① 垃圾箱；② Brevo 后台 Logs 是否有发送记录与退信原因；③ 发件人是否在 Brevo Senders 验证过、与 `RESET_MAIL_FROM` 是否一致；④ 是否超出 300 封/天额度；⑤ 变量是否在 push/重新部署后才配置（需再部署一次生效）。
@@ -95,6 +113,9 @@ Pages 项目 → Custom domains → Set up a custom domain，按提示在域名 
 
 **频繁 429？**
 登录/注册/发码有限流（isolate 内存级）。生产单人使用不会触达；本地连跑多套测试会耗尽配额，重启 wrangler 即可。
+
+**上传图标提示「图床未配置 / 已改用内联保存」？**
+前者说明 `IMG_UPLOAD_API` 还没配置（或配置后未重新部署）；后者是图床返回了错误——先用 curl 直接测图床接口（`curl -F file=@1.png https://图床/upload`），按其响应调整字段名（`IMG_UPLOAD_FIELD`）与鉴权（`IMG_UPLOAD_TOKEN` / `IMG_UPLOAD_QUERY`）；也可在 Brevo 之外看图床服务日志。回退机制下图标仍会保存，不影响使用。
 
 **仓库公开安全吗？**
 机密（API key、密码）按规范只存在于仪表板加密变量中，`wrangler.toml` 与代码里不含任何机密；`.dev.vars` 已被 gitignore。

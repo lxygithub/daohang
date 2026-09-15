@@ -1,6 +1,7 @@
 <script setup>
 import { ref, watch, computed, inject } from 'vue'
 import ImageCropper from './ImageCropper.vue'
+import { probeImageBed, uploadImage } from '../composables/sync'
 
 const props = defineProps({
   visible: Boolean,
@@ -20,6 +21,9 @@ const faviconPreview = ref('')
 const fetchingFavicon = ref(false)
 const cropFile = ref(null)
 const showCropper = ref(false)
+// 自建图床：已配置时上传图标自动转外链；未配置/失败回退 base64 内联（原行为）
+const imgbedEnabled = ref(false)
+const uploadingIcon = ref(false)
 const nameTouched = ref(false)
 let autoFetchTimer = null
 let skipAutoUrl = ''
@@ -41,6 +45,7 @@ const groupOptions = computed(() => {
 watch(() => props.visible, (val) => {
   if (!val) return
   faviconPreview.value = ''
+  probeImageBed().then(v => { imgbedEnabled.value = v })
   nameTouched.value = false
   lastNameAuto = ''
   clearTimeout(autoFetchTimer)
@@ -132,11 +137,37 @@ function pickFile() {
   input.click()
 }
 
-function onCropDone(dataUrl) {
-  iconUrl.value = dataUrl
-  faviconPreview.value = dataUrl
+async function onCropDone(dataUrl) {
   showCropper.value = false
   cropFile.value = null
+  // 未配置图床：沿用内联 base64（原行为，无需登录）
+  if (!imgbedEnabled.value) {
+    iconUrl.value = dataUrl
+    faviconPreview.value = dataUrl
+    return
+  }
+  // 已配置图床：上传换外链，失败回退内联，绝不阻断保存
+  uploadingIcon.value = true
+  try {
+    const blob = await (await fetch(dataUrl)).blob()
+    const file = new File([blob], 'icon.png', { type: blob.type || 'image/png' })
+    const r = await uploadImage(file)
+    if (r.ok && r.url) {
+      iconUrl.value = r.url
+      faviconPreview.value = r.url
+      showToast('图标已上传图床')
+    } else {
+      iconUrl.value = dataUrl
+      faviconPreview.value = dataUrl
+      showToast((r.error || '图床上传失败') + '，已改用内联保存')
+    }
+  } catch {
+    iconUrl.value = dataUrl
+    faviconPreview.value = dataUrl
+    showToast('图床上传失败，已改用内联保存')
+  } finally {
+    uploadingIcon.value = false
+  }
 }
 
 function onCropCancel() {
