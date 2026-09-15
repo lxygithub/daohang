@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "db:migrate": "wrangler d1 migrations apply daohang --remote",
+    "db:export": "node scripts/db-export.mjs",
+    "db:import": "node scripts/db-import.mjs",
+    "test:auth": "node scripts/test-auth.mjs"
   },
   "dependencies": {
     "cropperjs": "^2.1.1",
@@ -15,6 +19,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.2.3",
-    "vite": "^6.3.5"
+    "vite": "^6.3.5",
+    "wrangler": "^4.40.0"
   }
 }

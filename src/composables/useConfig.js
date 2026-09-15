@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { useToast } from './useToast'
+import { authed, noteConfigSynced } from './sync'
 
 export const AUTH_KEY = 'nav_auth'
 
@@ -50,6 +51,10 @@ export function useConfig() {
       const text = await res.text()
       const data = JSON.parse(text)
       config.value = data
+      // 登录态下记录服务端时间戳，供多设备 LWW 合并
+      if (res.headers.get('X-Scope') === 'user') {
+        noteConfigSynced(Number(res.headers.get('X-Config-Updated-At')) || 0)
+      }
     } catch (e) {
       console.error('[daohang] Failed to load config:', e)
       config.value = fallback
@@ -60,20 +65,32 @@ export function useConfig() {
 
   async function saveConfig() {
     if (!config.value) return
-    const password = getStoredPassword()
-    if (!password) {
-      useToast().showToast('验证已过期，请重新操作')
-      return
+    const body = { ...config.value }
+    // 登录用户免密保存自己的配置；访客沿用管理密码保存全局配置
+    if (!authed.value) {
+      const password = getStoredPassword()
+      if (!password) {
+        useToast().showToast('验证已过期，请重新操作')
+        return
+      }
+      body.password = password
     }
     try {
-      const body = { ...config.value, password }
-      await fetch('/api/config', {
+      const res = await fetch('/api/config', {
         method: 'POST',
         body: JSON.stringify(body),
         headers: { 'Content-Type': 'application/json' },
       })
+      if (res.ok) {
+        const d = await res.json().catch(() => ({}))
+        if (d.updatedAt) noteConfigSynced(Date.parse(d.updatedAt) || Date.now())
+      } else {
+        const d = await res.json().catch(() => ({}))
+        useToast().showToast('保存失败：' + (d.error || `HTTP ${res.status}`))
+      }
     } catch (e) {
       console.error('Failed to save config:', e)
+      useToast().showToast('保存失败，请检查网络')
     }
   }
 

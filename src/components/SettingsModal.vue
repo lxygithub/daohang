@@ -45,6 +45,7 @@ function onFontChange() {
   font.value = { ...font.value }
   saveFont(font.value)
   applyFont(font.value)
+  window.dispatchEvent(new CustomEvent('font-changed', { detail: { ...font.value } }))
 }
 
 function pickFontColor(c) {

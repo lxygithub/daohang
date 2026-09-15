@@ -1,3 +1,12 @@
+// GET  /api/config — 未登录：返回全局配置；已登录：返回该用户自己的配置
+//                     （首次登录时从全局配置播种一份副本）
+// POST /api/config — 已登录：免密保存到用户自己的配置
+//                    未登录：管理密码验证后保存全局配置（原有流程不变）
+//
+// 响应附带 X-Scope（user|global）与 X-Config-Updated-At 头，前端据此记录同步时间。
+import { ensureSchema, getUserData, setUserData, nowISO } from "../lib/db.js";
+import { getSessionUser, sessionCookie } from "../lib/auth.js";
+
 // Password resolution order:
 //   1. env.ADMIN_PASSWORD_SHA256  (recommended: store sha256 hex of your password)
 //   2. env.ADMIN_PASSWORD         (plain text in Cloudflare env vars / wrangler [vars])
@@ -31,18 +40,43 @@ const DEFAULT_CONFIG = {
   background: { type: "color", value: "#181818" },
 };
 
+const GLOBAL_ID = 1;
+const USER_CONFIG_KEY = "config";
+
 export async function onRequest(context) {
   const { request, env } = context;
   const { DB } = env;
 
   if (request.method === "GET") {
     try {
-      const result = await DB.prepare("SELECT config_json FROM nav_config WHERE id = 1").first();
-      if (result) {
-        return new Response(result.config_json, { headers: { "Content-Type": "application/json" } });
+      await ensureSchema(env);
+      const sess = await getSessionUser(env, request);
+
+      // ---- logged in: per-user config (seeded from global on first read) ----
+      if (sess) {
+        let row = await getUserData(env, sess.user.id, USER_CONFIG_KEY);
+        if (!row) {
+          const global = await DB.prepare("SELECT config_json FROM nav_config WHERE id = ?")
+            .bind(GLOBAL_ID).first();
+          const seed = global ? global.config_json : JSON.stringify(DEFAULT_CONFIG);
+          await setUserData(env, sess.user.id, USER_CONFIG_KEY, seed, nowISO());
+          row = { value: seed, updated_at: nowISO() };
+        }
+        return new Response(row.value, {
+          headers: {
+            "Content-Type": "application/json",
+            "X-Scope": "user",
+            "X-Config-Updated-At": Date.parse(row.updated_at) || Date.now(),
+            ...(sess.renewToken ? { "Set-Cookie": sessionCookie(sess.renewToken) } : {}),
+          },
+        });
       }
-      // Return default config
-      return new Response(JSON.stringify(DEFAULT_CONFIG), { headers: { "Content-Type": "application/json" } });
+
+      // ---- guest: global config (unchanged) ----
+      const result = await DB.prepare("SELECT config_json FROM nav_config WHERE id = ?")
+        .bind(GLOBAL_ID).first();
+      const body = result ? result.config_json : JSON.stringify(DEFAULT_CONFIG);
+      return new Response(body, { headers: { "Content-Type": "application/json", "X-Scope": "global" } });
     } catch (e) {
       return new Response(JSON.stringify({ error: e.message }), { status: 500, headers: { "Content-Type": "application/json" } });
     }
@@ -50,9 +84,10 @@ export async function onRequest(context) {
 
   if (request.method === "POST") {
     try {
+      await ensureSchema(env);
       const body = await request.json();
 
-      // Password verification endpoint
+      // Password verification endpoint (guest flow)
       if (body.action === "verify") {
         if (await verifyPassword(env, body.password)) {
           return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
@@ -60,19 +95,32 @@ export async function onRequest(context) {
         return new Response(JSON.stringify({ ok: false, error: "密码错误" }), { status: 403, headers: { "Content-Type": "application/json" } });
       }
 
-      // Save config - require password
-      if (!(await verifyPassword(env, body.password))) {
+      const sess = await getSessionUser(env, request);
+      const { action, password, ...configData } = body;
+      const payload = JSON.stringify(configData);
+
+      // ---- logged in: save the user's own config, no password needed ----
+      if (sess) {
+        const updatedAt = nowISO();
+        await setUserData(env, sess.user.id, USER_CONFIG_KEY, payload, updatedAt);
+        return new Response(JSON.stringify({ ok: true, scope: "user", updatedAt }), {
+          headers: {
+            "Content-Type": "application/json",
+            ...(sess.renewToken ? { "Set-Cookie": sessionCookie(sess.renewToken) } : {}),
+          },
+        });
+      }
+
+      // ---- guest: admin-password protected global save ----
+      if (!(await verifyPassword(env, password))) {
         return new Response(JSON.stringify({ ok: false, error: "密码错误" }), { status: 403, headers: { "Content-Type": "application/json" } });
       }
 
-      // Strip action/password before saving
-      const { action, password, ...configData } = body;
-
       await DB.prepare(
-        "INSERT OR REPLACE INTO nav_config (id, config_json, updated_at) VALUES (1, ?, CURRENT_TIMESTAMP)"
-      ).bind(JSON.stringify(configData)).run();
+        "INSERT OR REPLACE INTO nav_config (id, config_json, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)"
+      ).bind(GLOBAL_ID, payload).run();
 
-      return new Response(JSON.stringify({ ok: true }), { headers: { "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ ok: true, scope: "global" }), { headers: { "Content-Type": "application/json" } });
     } catch (e) {
       return new Response(JSON.stringify({ error: e.message }), { status: 400, headers: { "Content-Type": "application/json" } });
     }

@@ -1,0 +1,129 @@
+// Single data-access layer — ALL SQL lives here.
+// 换数据库（PostgreSQL / MySQL / Turso / 本地 SQLite）只需改这一个文件。
+// 方言约定：标准 SQLite；时间戳为 ISO-8601 TEXT，由应用层生成。
+
+const SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS users (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  email      TEXT    NOT NULL UNIQUE,
+  pwd_hash   TEXT    NOT NULL,
+  created_at TEXT    NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sessions (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL,
+  token_hash TEXT    NOT NULL UNIQUE,
+  created_at TEXT    NOT NULL,
+  expires_at TEXT    NOT NULL
+);
+CREATE TABLE IF NOT EXISTS user_data (
+  user_id    INTEGER NOT NULL,
+  key        TEXT    NOT NULL,
+  value      TEXT    NOT NULL,
+  updated_at TEXT    NOT NULL,
+  PRIMARY KEY (user_id, key)
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_user   ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);
+`;
+
+let schemaReady = null // per-isolate promise cache
+
+/** Idempotent bootstrap so git-push deploys work without running wrangler.
+ *  Mirrors d1/0002_users.sql. */
+export function ensureSchema(env) {
+  if (!schemaReady) {
+    schemaReady = env.DB.batch(
+      SCHEMA_SQL.split(';')
+        .map(s => s.trim())
+        .filter(Boolean)
+        .map(sql => env.DB.prepare(sql))
+    ).catch(e => { schemaReady = null; throw e })
+  }
+  return schemaReady
+}
+
+export function nowISO() { return new Date().toISOString() }
+
+// ---- users ----
+
+export async function getUserByEmail(env, email) {
+  return env.DB.prepare("SELECT id, email, pwd_hash, created_at FROM users WHERE email = ?")
+    .bind(email).first()
+}
+
+export async function getUserById(env, id) {
+  return env.DB.prepare("SELECT id, email, created_at FROM users WHERE id = ?")
+    .bind(id).first()
+}
+
+/** Returns new user id. Throws on duplicate email (UNIQUE). */
+export async function createUser(env, email, pwdHash) {
+  const res = await env.DB.prepare(
+    "INSERT INTO users (email, pwd_hash, created_at) VALUES (?, ?, ?)"
+  ).bind(email, pwdHash, nowISO()).run()
+  return res.meta.last_row_id
+}
+
+// ---- sessions ----
+
+export async function createSession(env, userId, tokenHash, expiresAt) {
+  await env.DB.prepare(
+    "INSERT INTO sessions (user_id, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?)"
+  ).bind(userId, tokenHash, nowISO(), expiresAt).run()
+}
+
+export async function getSessionByTokenHash(env, tokenHash) {
+  return env.DB.prepare(
+    `SELECT s.id, s.expires_at, s.user_id, u.email
+       FROM sessions s JOIN users u ON u.id = s.user_id
+      WHERE s.token_hash = ?`
+  ).bind(tokenHash).first()
+}
+
+export async function extendSession(env, sessionId, newExpiry) {
+  await env.DB.prepare("UPDATE sessions SET expires_at = ? WHERE id = ?")
+    .bind(newExpiry, sessionId).run()
+}
+
+export async function deleteSession(env, tokenHash) {
+  await env.DB.prepare("DELETE FROM sessions WHERE token_hash = ?")
+    .bind(tokenHash).run()
+}
+
+/** Opportunistic cleanup of expired rows (called on login). */
+export async function purgeExpiredSessions(env) {
+  await env.DB.prepare("DELETE FROM sessions WHERE expires_at < ?").bind(nowISO()).run()
+}
+
+// ---- user_data (per-user key/value, LWW by updated_at) ----
+
+export async function getAllUserData(env, userId) {
+  const { results } = await env.DB.prepare(
+    "SELECT key, value, updated_at FROM user_data WHERE user_id = ?"
+  ).bind(userId).all()
+  return results || []
+}
+
+export async function getUserData(env, userId, key) {
+  return env.DB.prepare(
+    "SELECT value, updated_at FROM user_data WHERE user_id = ? AND key = ?"
+  ).bind(userId, key).first()
+}
+
+/** Last-write-wins upsert: only writes when `updatedAt` is newer than stored. */
+export async function upsertUserData(env, userId, key, value, updatedAt) {
+  const cur = await getUserData(env, userId, key)
+  if (cur && cur.updated_at >= updatedAt) return { written: false, updated_at: cur.updated_at }
+  await env.DB.prepare(
+    "INSERT OR REPLACE INTO user_data (user_id, key, value, updated_at) VALUES (?, ?, ?, ?)"
+  ).bind(userId, key, value, updatedAt).run()
+  return { written: true, updated_at: updatedAt }
+}
+
+/** Unconditional write (used for explicit config saves — user intent wins). */
+export async function setUserData(env, userId, key, value, updatedAt) {
+  await env.DB.prepare(
+    "INSERT OR REPLACE INTO user_data (user_id, key, value, updated_at) VALUES (?, ?, ?, ?)"
+  ).bind(userId, key, value, updatedAt).run()
+}

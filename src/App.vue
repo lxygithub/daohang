@@ -13,7 +13,12 @@ import NavGrid from './components/NavGrid.vue'
 import EditModal from './components/EditModal.vue'
 import SettingsModal from './components/SettingsModal.vue'
 import PasswordModal from './components/PasswordModal.vue'
+import AuthModal from './components/AuthModal.vue'
 import Toast from './components/Toast.vue'
+import {
+  authed, userEmail, checkAuth, pullAndMerge, logout as syncLogout,
+  bindPrefEvents, noteConfigSynced,
+} from './composables/sync'
 
 const buildTime = __BUILD_TIME__
 
@@ -37,6 +42,7 @@ function applyTheme(light) {
 function toggleTheme() {
   applyTheme(!isLight.value)
   try { localStorage.setItem(THEME_KEY, isLight.value ? 'light' : 'dark') } catch {}
+  window.dispatchEvent(new CustomEvent('theme-changed', { detail: isLight.value ? 'light' : 'dark' }))
 }
 
 // Clock, lunar calendar & greeting
@@ -146,6 +152,7 @@ function selectEngine(id) {
   engineId.value = id
   showEngineMenu.value = false
   try { localStorage.setItem(ENGINE_KEY, id) } catch {}
+  window.dispatchEvent(new CustomEvent('engine-changed', { detail: id }))
   searchInputRef.value?.focus()
 }
 
@@ -255,6 +262,7 @@ function handleKeydown(e) {
     if (editMode.value) { editMode.value = false; return }
     if (fabMenuOpen.value) { fabMenuOpen.value = false; return }
     if (addingEngine.value) { addingEngine.value = false; return }
+    if (userMenuOpen.value) { userMenuOpen.value = false; return }
     showEngineMenu.value = false
     return
   }
@@ -304,6 +312,9 @@ function handleDocClick(e) {
   if (fabMenuOpen.value && !e.target.closest('.fab-cluster')) {
     fabMenuOpen.value = false
   }
+  if (userMenuOpen.value && !e.target.closest('.fab-cluster')) {
+    userMenuOpen.value = false
+  }
   if (!editMode.value) return
   // Clicking a card or inside a modal keeps edit mode; blank space exits.
   if (
@@ -322,7 +333,8 @@ const showPasswordModal = ref(false)
 const pendingAction = ref(null)
 
 function ensureVerified(callback) {
-  if (verified.value) {
+  // 登录用户免密（账号即凭证），访客保留管理密码流程
+  if (verified.value || authed.value) {
     callback()
     return
   }
@@ -368,6 +380,39 @@ function closeEditModal() {
 
 // Settings drawer
 const showSettingsModal = ref(false)
+
+// ---- Account (register / login / sync) ----
+const showAuthModal = ref(false)
+const userMenuOpen = ref(false)
+const syncingNow = ref(false)
+
+function onAuthed(mail, mode) {
+  showToast(mode === 'register' ? '注册成功，正在同步偏好…' : '登录成功，正在同步偏好…')
+  pullAndMerge()
+}
+
+async function doLogout() {
+  userMenuOpen.value = false
+  await syncLogout()
+  showToast('已退出登录')
+  // 回到访客视角：重新拉取全局默认配置
+  await loadConfig()
+  applyBackground()
+}
+
+async function syncNow() {
+  if (syncingNow.value) return
+  syncingNow.value = true
+  try {
+    await pullAndMerge()
+    await loadConfig()
+    applyBackground()
+    showToast('已从云端同步')
+  } finally {
+    syncingNow.value = false
+    userMenuOpen.value = false
+  }
+}
 
 // ---- Floating action cluster (pagoda menu) ----
 // The old topbar buttons collapse into one round button;
@@ -469,6 +514,23 @@ onMounted(async () => {
   window.addEventListener('hero-changed', onHeroPrefsChanged)
   window.addEventListener('custom-engines-changed', reloadCustomEngines)
   window.addEventListener('open-service-by-id', handleOpenServiceById)
+  // 同步层：偏好事件 → 云端；服务端应用 → 本地状态
+  bindPrefEvents()
+  window.addEventListener('theme-changed', () => {
+    let light = false
+    try { light = localStorage.getItem(THEME_KEY) === 'light' } catch {}
+    if (light !== isLight.value) applyTheme(light)
+  })
+  window.addEventListener('view-changed', () => { viewMode.value = loadView() })
+  window.addEventListener('engine-changed', () => {
+    const id = localStorage.getItem(ENGINE_KEY) || 'local'
+    if (allEngines.value.some(e => e.id === id)) engineId.value = id
+    else reloadCustomEngines()
+  })
+  window.addEventListener('server-config-changed', async () => {
+    await loadConfig()
+    applyBackground()
+  })
   // 会话内记住验证状态，刷新无需重复输密码
   if (getStoredPassword()) verified.value = true
   let savedLight = false
@@ -484,6 +546,8 @@ onMounted(async () => {
   fetchQuote()
   await loadConfig()
   applyBackground()
+  // 会话仍有效时静默同步一次云端偏好
+  if (await checkAuth()) pullAndMerge()
 })
 
 let clockTimer = null
@@ -711,6 +775,18 @@ onUnmounted(() => {
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
             </svg>
           </button>
+          <button v-if="!authed" class="icon-btn fab-item" title="登录 / 注册" @click="runFabAction(() => { showAuthModal = true })">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+          </button>
+          <button v-else class="icon-btn fab-item fab-user-dot" :title="userEmail" @click="runFabAction(() => { userMenuOpen = !userMenuOpen })">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+              <circle cx="12" cy="7" r="4"/>
+            </svg>
+          </button>
         </div>
       </transition>
       <button
@@ -724,6 +800,35 @@ onUnmounted(() => {
         <span class="h-line"></span>
       </button>
     </div>
+
+    <!-- Logged-in user menu -->
+    <transition name="menu-pop">
+      <div v-if="userMenuOpen" class="user-menu" @click.stop>
+        <div class="user-menu-head">
+          <span class="user-avatar">{{ userEmail.charAt(0).toUpperCase() }}</span>
+          <div class="user-meta">
+            <b>{{ userEmail }}</b>
+            <span>偏好自动同步已开启</span>
+          </div>
+        </div>
+        <button class="user-menu-item" :disabled="syncingNow" @click="syncNow">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"/>
+            <polyline points="1 20 1 14 7 14"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+          {{ syncingNow ? '同步中…' : '立即同步' }}
+        </button>
+        <button class="user-menu-item danger" @click="doLogout">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+            <polyline points="16 17 21 12 16 7"/>
+            <line x1="21" y1="12" x2="9" y2="12"/>
+          </svg>
+          退出登录
+        </button>
+      </div>
+    </transition>
   </div>
 
   <EditModal
@@ -747,6 +852,12 @@ onUnmounted(() => {
     :visible="showPasswordModal"
     @verified="onPasswordVerified"
     @cancel="onPasswordCancel"
+  />
+
+  <AuthModal
+    :visible="showAuthModal"
+    @authed="onAuthed"
+    @close="showAuthModal = false"
   />
 
   <Toast :message="toastMessage" :visible="toastVisible" />
