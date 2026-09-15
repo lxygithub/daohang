@@ -13,10 +13,11 @@ http.createServer((req, res) => {
     req.on('data', (c) => { size += c.length }) // 消费请求体即可，无需解析 multipart
     req.on('end', () => {
       const ct = req.headers['content-type'] || ''
-      const name = `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`
+      const id = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.png`
       last = { at: new Date().toISOString(), size, contentType: ct }
+      // CloudFlare-ImgBed 真实响应形态：JSON 数组 + 相对路径 src
       res.writeHead(200, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ code: 0, message: 'ok', data: { url: `http://127.0.0.1:${PORT}/f/${name}` } }))
+      res.end(JSON.stringify([{ src: `/file/${id}` }]))
     })
   } else if (req.method === 'GET' && req.url === '/last') {
     res.writeHead(200, { 'Content-Type': 'application/json' })

@@ -71,6 +71,27 @@ Brevo 免费档每天可发 300 封交易邮件，**无需验证自有域名**�
 - 上传接口需登录会话才可调用（防匿名滥用）；单文件限 8MB、仅图片。
 - 未配置 `IMG_UPLOAD_API` 或上传失败时，前端自动回退为 base64 内联保存，功能永不阻断；已保存的 base64 图标照常渲染，无需迁移。
 
+### 以 CloudFlare-ImgBed（MarSeventh）为例
+
+社区常用的 Telegram 系图床 [CloudFlare-ImgBed](https://github.com/MarSeventh/CloudFlare-ImgBed)，对接参数：
+
+1. 在图床管理端拿到**上传认证码**（认证管理），或创建一个带 upload 权限的 **API Token**。
+2. `wrangler.toml` 的 `[vars]`：
+
+   ```toml
+   IMG_UPLOAD_API = "https://你的图床域名/upload"
+   # 文件字段名默认就是 file，无需再配 IMG_UPLOAD_FIELD
+   ```
+
+3. 仪表板加密机密（二选一）：
+
+   - `IMG_UPLOAD_QUERY = "authCode=你的认证码"`（ImgBed 原生查询串认证）
+   - 或 `IMG_UPLOAD_TOKEN = "<API Token>"`（Bearer 头）
+
+4. push 重新部署后，上传图标会经 `/api/upload` 转发到图床，返回的外链自动写进图标 URL。
+
+说明：ImgBed 默认返回相对路径 `/file/xxx`，代理已自动按图床域名补全；也可在其后追加 `&returnFormat=full` 让图床直接返回完整链接。Telegram 渠道单文件上限 20MB、默认开启服务端压缩（小图标无影响）。
+
 ## 五、D1 数据库
 
 **建表与迁移**：应用内置幂等的 `ensureSchema()`——任何 auth/config 接口首次被访问时自动创建 `users / sessions / user_data / pwd_resets / nav_config` 五张表，并对老库自动补列（如 `users.disabled`）。因此 git 推送部署即可，通常不需要手动迁移；如需手动执行：`npm run db:migrate`。

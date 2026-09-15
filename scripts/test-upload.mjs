@@ -62,7 +62,7 @@ let gotUrl = ''
   const res = await fetch(BASE + '/api/upload', { method: 'POST', body: fd, headers: { Cookie: A.header() } })
   const d = await res.json().catch(() => ({}))
   ok(res.status === 200 && d.ok === true, `upload png → 200 ok (got ${res.status})`)
-  ok(/^http:\/\/127\.0\.0\.1:9001\/f\/.+\.png$/.test(d.url || ''), `resolved url from bed JSON (got ${d.url})`)
+  ok(/^http:\/\/127\.0\.0\.1:9001\/file\/\d+_[a-z0-9]+\.png$/.test(d.url || ''), `relative src resolved against bed origin (got ${d.url})`)
   gotUrl = d.url || ''
 }
 
@@ -98,7 +98,7 @@ let gotUrl = ''
 }
 
 // 9. 返回的外链可被 GET（mock 提供占位）——保证 URL 格式真实可拼
-ok(gotUrl.startsWith(IMGBED + '/f/'), 'returned url points at bed origin')
+ok(gotUrl.startsWith(IMGBED + '/file/'), 'returned url points at bed origin')
 
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)

@@ -21,10 +21,15 @@ function json(obj, status = 200) {
   });
 }
 
-// 递归找第一个像图片外链的字符串
+// 递归找第一个像图片外链的字符串（http(s) 绝对路径或 / 开头相对路径）
 function findUrl(v, depth = 0) {
   if (v == null || depth > 6) return null;
-  if (typeof v === "string") return /^https?:\/\/\S+$/i.test(v) ? v : null;
+  if (typeof v === "string") {
+    if (/^https?:\/\/\S+$/i.test(v)) return v;
+    // 相对路径（如 CloudFlare-ImgBed 默认返回 /file/xxx.jpg）→ 由调用方补图床 origin
+    if (/^\/[^\s"'<>\\]+$/.test(v)) return v;
+    return null;
+  }
   if (Array.isArray(v)) {
     for (const it of v) { const r = findUrl(it, depth + 1); if (r) return r; }
     return null;
@@ -44,15 +49,19 @@ function findUrl(v, depth = 0) {
 
 async function extractUrl(res, apiBase) {
   const origin = new URL(apiBase).origin;
+  const absolute = (u) => {
+    if (!u) return null;
+    try { return new URL(u, origin).href; } catch { return null; }
+  };
   try {
-    const direct = findUrl(await res.json());
+    const direct = absolute(findUrl(await res.json()));
     if (direct) return direct;
   } catch { /* 非 JSON，走文本 */ }
   const text = await res.text().catch(() => "");
   const m = text.match(/https?:\/\/[^\s"'<>\\]+/i);
   if (m) return m[0];
-  const rel = text.trim().match(/^(\/[^\s"'<>\\]+)$/); // 相对路径 → 图床 origin 补全
-  if (rel) { try { return new URL(rel[1], origin).href; } catch {} }
+  const rel = text.trim().match(/^(\/[^\s"'<>\\]+)$/); // 整个响应就是个相对路径
+  if (rel) return absolute(rel[1]);
   return null;
 }
 
