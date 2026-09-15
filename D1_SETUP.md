@@ -1,5 +1,8 @@
 # D1 数据库设置指南
 
+> 完整部署指南（Pages 项目创建、环境变量管理规则、Brevo 发信、FAQ）见 [DEPLOY.md](DEPLOY.md)；
+> 项目介绍与本地开发见 [README.md](README.md)。本文档仅保留 D1 细节。
+
 ## 1. 创建 D1 数据库
 
 ```bash
