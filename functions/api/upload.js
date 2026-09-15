@@ -94,7 +94,19 @@ export async function onRequest(context) {
   out.append(field, file, file.name || "image.png");
 
   const q = String(env.IMG_UPLOAD_QUERY || "").trim();
-  const target = q ? api + (api.includes("?") ? "&" : "?") + q.replace(/^\?+/, "") : api;
+  // 目录透传：客户端可带 ?uploadFolder=xxx（cfbed 支持指定上传目录，相对路径如 icons/daohang）。
+  // 净化：仅允许字母数字 _ - /，禁止 .. 防目录穿越，限长 96，段首尾去斜杠。
+  let folder = "";
+  try {
+    const raw = new URL(request.url).searchParams.get("uploadFolder") || "";
+    folder = raw.trim().replace(/^\/+|\/+$/g, "");
+    if (folder && (!/^[\w\-/]+$/.test(folder) || folder.includes("..") || folder.length > 96)) {
+      return json({ error: "uploadFolder 仅支持字母数字、-、_、/，且不能包含 .." }, 400);
+    }
+  } catch { /* URL 解析失败则忽略目录参数 */ }
+  const qs = [q.replace(/^\?+/, ""), folder ? "uploadFolder=" + encodeURIComponent(folder) : ""]
+    .filter(Boolean).join("&");
+  const target = qs ? api + (api.includes("?") ? "&" : "?") + qs : api;
   const headers = { Accept: "application/json, text/plain;q=0.8, */*;q=0.5" };
   const tk = String(env.IMG_UPLOAD_TOKEN || "").trim();
   if (tk) headers.Authorization = "Bearer " + tk;

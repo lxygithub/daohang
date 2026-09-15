@@ -75,6 +75,35 @@ let gotUrl = ''
   ok(String(last.url || '').includes('authCode=dev-auth-code'), `query auth forwarded (got ${JSON.stringify(last.url)})`)
 }
 
+// 5b. 目录透传：uploadFolder 被拼进上游查询串，且与鉴权查询串共存
+{
+  const pngB64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+  const fd = new FormData()
+  fd.append('file', new Blob([Uint8Array.from(atob(pngB64), c => c.charCodeAt(0))], { type: 'image/png' }), 'icon2.png')
+  const res = await fetch(BASE + '/api/upload?uploadFolder=' + encodeURIComponent('icons/daohang'),
+    { method: 'POST', body: fd, headers: { Cookie: A.header() } })
+  const d = await res.json().catch(() => ({}))
+  ok(res.status === 200 && d.ok === true, `upload with uploadFolder → 200 ok (got ${res.status})`)
+  const last = await (await fetch(IMGBED + '/last')).json()
+  const u = decodeURIComponent(String(last.url || ''))
+  ok(u.includes('uploadFolder=icons/daohang'), `uploadFolder forwarded upstream (got ${u})`)
+  ok(u.includes('authCode=dev-auth-code'), `authCode coexists with uploadFolder (got ${u})`)
+}
+
+// 5c. 目录净化：.. 穿越与非法字符 → 400，请求不触达图床
+{
+  const bad = ['..%2Fevil', 'a%20b', '%3A%2F%2Fabs']
+  for (const enc of bad) {
+    const fd = new FormData()
+    fd.append('file', new Blob([new Uint8Array([137, 80, 78, 71])], { type: 'image/png' }), 'x.png')
+    const res = await fetch(BASE + '/api/upload?uploadFolder=' + enc,
+      { method: 'POST', body: fd, headers: { Cookie: A.header() } })
+    ok(res.status === 400, `uploadFolder "${decodeURIComponent(enc)}" → 400 (got ${res.status})`)
+  }
+  const last = await (await fetch(IMGBED + '/last')).json()
+  ok(!String(last.url || '').includes('evil'), 'blocked folder never reached upstream')
+}
+
 // 6. 非图片文件 → 415
 {
   const fd = new FormData()
