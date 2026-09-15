@@ -3,6 +3,13 @@
 // 方言约定：标准 SQLite；时间戳为 ISO-8601 TEXT，由应用层生成。
 
 const SCHEMA_SQL = `
+-- 旧版全局配置表（访客视角 / 登录播种来源），对应 d1/0001_init.sql；
+-- 补进 ensureSchema 让全新 D1（新部署、fork、本地清库）无需手动跑迁移。
+CREATE TABLE IF NOT EXISTS nav_config (
+  id          INTEGER PRIMARY KEY CHECK (id = 1),
+  config_json TEXT NOT NULL,
+  updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
 CREATE TABLE IF NOT EXISTS users (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   email      TEXT    NOT NULL UNIQUE,
@@ -38,7 +45,7 @@ CREATE INDEX IF NOT EXISTS idx_pwd_resets_expiry ON pwd_resets(expires_at);
 let schemaReady = null // per-isolate promise cache
 
 /** Idempotent bootstrap so git-push deploys work without running wrangler.
- *  Mirrors d1/0002_users.sql + in-place column migrations. */
+ *  Mirrors d1/0001/0002/0003 + in-place column migrations. */
 export function ensureSchema(env) {
   if (!schemaReady) {
     schemaReady = (async () => {

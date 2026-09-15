@@ -2,16 +2,32 @@ name = "daohang"
 compatibility_date = "2025-01-01"
 pages_build_output_dir = "dist"
 
+# ── Cloudflare Pages 环境变量管理规则（新政策）────────────────
+# 配置了 pages_build_output_dir 后，本项目改由 wrangler.toml 统一管理配置：
+#   * 明文变量（Plaintext）→ 只能在本文件 [vars] 里维护，Git 部署时以此为准，
+#     仪表板中旧的明文变量会被忽略/覆盖；
+#   * 机密（Secrets）→ 仍可在 Dashboard > Settings > Environment variables
+#     以「加密」方式添加，或用 `wrangler pages secret put <NAME>`；
+#     运行时两类自动合并，机密优先级不受 [vars] 影响。
+# 判断标准：泄露即出事的（API key、密码）→ 机密；其余 → [vars]。
+
 [vars]
-# 管理密码（仅存在于服务端，不会打包进前端）。
-# 建议部署后在 Cloudflare Dashboard 加密环境变量，或改用 ADMIN_PASSWORD_SHA256（密码的 sha256 十六进制值）。
-ADMIN_PASSWORD = "mewlxy"
-# 管理员账号（逗号分隔可多个）。这些邮箱登录后显示「用户管理」入口，可重置/删除任意用户。
+# 管理员账号（逗号分隔可多个）。这些邮箱登录后显示「用户管理」入口，可重置/禁用/删除任意用户。
 ADMIN_EMAILS = "594328762@qq.com"
-# 找回密码邮件（Resend）：RESEND_API_KEY 请部署后在 Dashboard 以加密变量配置，勿写进本文件。
-# 未验证自有域名前，Resend 默认发件地址 onboarding@resend.dev 只能投递到 Resend 账号本人邮箱；
-# 正式启用请先在 Resend 验证域名，并设置 RESET_MAIL_FROM = "导航 <noreply@你的域名>"。
-# RESET_MAIL_FROM = "daohang <onboarding@resend.dev>"
+
+# 找回密码邮件（Brevo：免费 300 封/天，无需验证域名，邮件可能进垃圾箱属正常）。
+# 上线三步：
+#   1) brevo.com 注册 → Senders 添加并验证发件人邮箱（如 594328762@qq.com）
+#   2) 发件人写在这里（非机密，必须是上一步验证过的邮箱）：
+# RESET_MAIL_FROM = "daohang <594328762@qq.com>"
+#   3) Dashboard 添加加密机密：BREVO_API_KEY = "xkeysib-..."（勿写进本文件）
+# 兼容备用：旧 Resend 通道仍保留——仅当未配置 BREVO_API_KEY 而配置了 RESEND_API_KEY（机密）时启用。
+
+# 管理密码：明文不放这里（会随 Git 进仓库）。
+# → 在 Dashboard 添加加密机密 ADMIN_PASSWORD（建议设个新强密码）；
+#   或改用其 sha256 十六进制值放 [vars]（可公开的弱等价形式，仍建议优先用机密）：
+# ADMIN_PASSWORD_SHA256 = "<sha256 hex>"
+# 未配置两者时服务端回退内置默认（与历史仓库一致），首次部署后请尽快改成机密。
 
 [[d1_databases]]
 binding = "DB"
