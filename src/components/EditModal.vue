@@ -1,6 +1,7 @@
 <script setup>
 import { ref, watch, computed, inject } from 'vue'
 import ImageCropper from './ImageCropper.vue'
+import SiteLibrary from './SiteLibrary.vue'
 import { probeImageBed, uploadImage } from '../composables/sync'
 import {
   normalizeSiteUrl,
@@ -33,6 +34,7 @@ const showCropper = ref(false)
 const imgbedEnabled = ref(false)
 const uploadingIcon = ref(false)
 const nameTouched = ref(false)
+const showLibrary = ref(false)
 let autoFetchTimer = null
 let skipAutoUrl = ''
 let lastNameAuto = ''
@@ -249,6 +251,25 @@ function save() {
 function handleOverlayClick(e) {
   if (e.target === e.currentTarget) emit('close')
 }
+
+// 从站点库选中：回填名称/链接/图标，可选预填分组；不再触发自动获取
+function onLibraryPick(site) {
+  showLibrary.value = false
+  url.value = site.url
+  skipAutoUrl = site.url
+  name.value = site.name
+  lastNameAuto = site.name
+  nameTouched.value = true
+  if (site.icon) {
+    iconUrl.value = site.icon
+    faviconPreview.value = site.icon
+  } else {
+    iconUrl.value = ''
+    faviconPreview.value = ''
+  }
+  if (!group.value.trim() && site.suggestedGroup) group.value = site.suggestedGroup
+  showToast('已从站点库填入，可修改后保存')
+}
 </script>
 
 <template>
@@ -267,6 +288,7 @@ function handleOverlayClick(e) {
         <label>链接 <span class="label-hint">（粘贴后自动识别名称与图标）</span></label>
         <div class="input-row">
           <input type="text" class="form-input" v-model="url" placeholder="粘贴链接，如 github.com">
+          <button class="btn-text fetch-btn" @click="showLibrary = true">站点库</button>
           <button
             class="btn-text fetch-btn"
             :class="{ loading: fetchingFavicon }"
@@ -312,5 +334,11 @@ function handleOverlayClick(e) {
     :file="cropFile"
     @crop="onCropDone"
     @cancel="onCropCancel"
+  />
+
+  <SiteLibrary
+    :visible="showLibrary"
+    @close="showLibrary = false"
+    @pick="onLibraryPick"
   />
 </template>

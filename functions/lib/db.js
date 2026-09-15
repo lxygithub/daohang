@@ -40,6 +40,24 @@ CREATE TABLE IF NOT EXISTS pwd_resets (
 CREATE INDEX IF NOT EXISTS idx_sessions_user   ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);
 CREATE INDEX IF NOT EXISTS idx_pwd_resets_expiry ON pwd_resets(expires_at);
+-- 内置导航站点库（自维护数据集，经 /api/builtin-sites/import 导入）
+CREATE TABLE IF NOT EXISTS builtin_sites (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  url         TEXT    NOT NULL UNIQUE,
+  name        TEXT    NOT NULL,
+  icon        TEXT    DEFAULT '',
+  icon_src    TEXT    DEFAULT '',
+  description TEXT    DEFAULT '',
+  rate        INTEGER DEFAULT 0,
+  source_id   TEXT    DEFAULT '',
+  updated_at  TEXT    NOT NULL
+);
+CREATE TABLE IF NOT EXISTS builtin_site_cats (
+  site_id INTEGER NOT NULL,
+  cat     TEXT    NOT NULL,
+  PRIMARY KEY (site_id, cat)
+);
+CREATE INDEX IF NOT EXISTS idx_builtin_cats_cat ON builtin_site_cats(cat);
 `;
 
 let schemaReady = null // per-isolate promise cache
@@ -196,6 +214,95 @@ export async function listUsersWithStats(env, q = '') {
       ORDER BY u.id`
   ).bind(like).all()
   return results || []
+}
+
+// ---- builtin sites（内置导航站点库）----
+
+export const BUILTIN_CATS = [
+  'app', 'news', 'music', 'photos', 'shopping', 'social', 'sports',
+  'life', 'games', 'education', 'tech', 'finance', 'read', 'others',
+]
+
+/** 批量 upsert：一行 JSON 数组经 json_each 展开写入（单语句 1 个绑定参数，
+ *  绕开 D1 每语句 100 参数限制）。url 冲突时更新内容字段。 */
+export async function upsertBuiltinSites(env, rows) {
+  await env.DB.prepare(
+    `INSERT INTO builtin_sites (url, name, icon, icon_src, description, rate, source_id, updated_at)
+     SELECT je.value->>'$.url', je.value->>'$.name', je.value->>'$.icon',
+            je.value->>'$.iconSrc', je.value->>'$.description',
+            CAST(je.value->>'$.rate' AS INTEGER), je.value->>'$.sourceId', je.value->>'$.updatedAt'
+       FROM json_each(?) AS je
+     WHERE true
+     ON CONFLICT(url) DO UPDATE SET
+       name = excluded.name, icon = excluded.icon, icon_src = excluded.icon_src,
+       description = excluded.description, rate = excluded.rate,
+       source_id = excluded.source_id, updated_at = excluded.updated_at`
+  ).bind(JSON.stringify(rows)).run()
+}
+
+/** 同步分类关联：先清后插，仅对本次批次涉及的 url。 */
+export async function replaceBuiltinCats(env, pairs) {
+  const urls = [...new Set(pairs.map(p => p.url))]
+  await env.DB.prepare("DELETE FROM builtin_site_cats WHERE site_id IN (SELECT id FROM builtin_sites WHERE url IN (SELECT je.value FROM json_each(?) AS je))")
+    .bind(JSON.stringify(urls)).run()
+  await env.DB.prepare(
+    `INSERT OR IGNORE INTO builtin_site_cats (site_id, cat)
+     SELECT s.id, je.value->>'$.cat' FROM json_each(?) je
+       JOIN builtin_sites s ON s.url = je.value->>'$.url'`
+  ).bind(JSON.stringify(pairs)).run()
+}
+
+export async function countBuiltinSites(env) {
+  const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM builtin_sites").first()
+  return row ? row.n : 0
+}
+
+/** 读接口：分类/关键词过滤 + rate 排序 + 分页。q 做 name/url 前后通配 LIKE。 */
+export async function listBuiltinSites(env, { cat = '', q = '', page = 1, pageSize = 50 }) {
+  const where = []
+  const params = []
+  if (cat) { where.push('s.id IN (SELECT site_id FROM builtin_site_cats WHERE cat = ?)'); params.push(cat) }
+  if (q) {
+    const like = '%' + String(q).replace(/[\\%_]/g, ch => '\\' + ch) + '%'
+    where.push('(s.name LIKE ? ESCAPE \'\\\' OR s.url LIKE ? ESCAPE \'\\\')')
+    params.push(like, like)
+  }
+  const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : ''
+  const countRow = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM builtin_sites s ${whereSql}`
+  ).bind(...params).first()
+  const total = countRow ? countRow.n : 0
+  const limit = Math.min(100, Math.max(1, pageSize | 0 || 50))
+  const offset = (Math.max(1, page | 0 || 1) - 1) * limit
+  const { results } = await env.DB.prepare(
+    `SELECT s.id, s.name, s.url, s.icon, s.description, s.rate
+       FROM builtin_sites s ${whereSql}
+      ORDER BY s.rate DESC, s.name LIMIT ${limit} OFFSET ${offset}`
+  ).bind(...params).all()
+  const items = results || []
+  // 批量补齐分类
+  let catsBy = new Map()
+  if (items.length) {
+    const ids = items.map(i => i.id)
+    const { results: catRows } = await env.DB.prepare(
+      `SELECT site_id, cat FROM builtin_site_cats WHERE site_id IN (${ids.map(() => '?').join(',')})`
+    ).bind(...ids).all()
+    catsBy = new Map()
+    for (const r of catRows || []) {
+      if (!catsBy.has(r.site_id)) catsBy.set(r.site_id, [])
+      catsBy.get(r.site_id).push(r.cat)
+    }
+  }
+  return {
+    total,
+    page: Math.max(1, page | 0 || 1),
+    pageSize: limit,
+    items: items.map(i => ({
+      name: i.name, url: i.url, icon: i.icon || '',
+      description: i.description || '', rate: i.rate || 0,
+      cats: catsBy.get(i.id) || [],
+    })),
+  }
 }
 
 // ---- password resets (email verification codes) ----
