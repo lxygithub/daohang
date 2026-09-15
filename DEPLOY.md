@@ -108,7 +108,23 @@ npm run db:import     # 备份 → D1；可生成 PostgreSQL / MySQL / SQLite �
 
 **换库**：全部 SQL 收敛在 `functions/lib/db.js` 单适配层，使用标准 SQLite 方言与 ISO-8601 文本时间戳，迁移到其他 SQLite 兼容库成本最低。
 
-## 六、管理员
+## 六、内置导航站点库（自维护）
+
+站点库数据源为 inftab（Infinity 新标签页）公开图标库，全量 ~2 万站点存 D1，前端「新增项目 → 站点库」可搜索/分类挑选。维护流程（本机即可，无需 wrangler 登录）：
+
+```bash
+npm run builtin:crawl    # 1. 分页抓取 15 个分类（断点续爬，数据在 scripts/data/，不入库）
+npm run builtin:merge    # 2. 清洗去重 → builtin-sites.json
+npm run icons:rehost     # 3. 图标转存自建图床 builtin-icons/ 目录（断点续传，可反复跑到 0 失败）
+npm run icons:apply      # 4. 把转存结果写回 → builtin-final.json（失败项回退原始 CDN 直链）
+npm run builtin:import   # 5. 全量导入 D1（upsert 幂等，需先 re-arm 密钥）；增量升级图标加 --delta
+```
+
+**导入密钥（re-arm / disarm）**：导入端点 `/api/builtin-sites/import` 由 `wrangler.toml [vars]` 的 `BUILTIN_IMPORT_KEY` 门禁。仓库公开，密钥只在导入窗口临时存在：导入前在该文件加回一行 `BUILTIN_IMPORT_KEY = "<openssl rand -hex 32 生成>"` 并同步写进 `scripts/data/import-key.txt`，推送部署后跑 `npm run builtin:import`，完成后立即删除该行再推送（disarm）。密钥暴露窗口 ≈ 导入窗口（分钟级），端点仅可写站点库两表且有行数上限。
+
+**额度注意**：D1 免费档每日 10 万行写入。单次全量导入 ≈ 3.5 万行（站点 upsert + 分类关联清插）；同日反复全量重导或叠加站点日常写入可能触发当日限额（表现：登录/保存配置报 D1_ERROR，读取不受影响，次日自动恢复）。日常图标增量升级用 `icons:apply` 的差量导入更省额度。
+
+## 七、管理员
 
 - 管理员 = `ADMIN_EMAILS` 中列出的邮箱。用该邮箱**注册/登录**后，用户菜单出现「用户管理」入口。
 - 用户管理支持：邮箱搜索、查看每用户会话/偏好数、重置密码（强制改密并踢全部设备）、禁用/启用（禁用即刻全端下线且无法登录、无法找回密码）、删除（事务级联清理，不可恢复）。

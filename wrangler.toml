@@ -25,9 +25,6 @@ RESET_MAIL_FROM = "daohang <mewlxyy666@gmail.com>"
 # 不再 base64 内联。鉴权 Bearer IMG_UPLOAD_TOKEN 走仪表板加密机密。
 IMG_UPLOAD_API = "https://img-bed.ieoc.top/upload"
 
-# 内置站点库导入密钥（临时开启！）：/api/builtin-sites/import 用。导入完成后务必
-# 删除此行（disarm 提交）。密钥随公开仓库部署，暴露窗口 = 导入窗口，仅可写站点库表。
-BUILTIN_IMPORT_KEY = "46223fab37521bbf0b9e6af6e8ddfbb48a800b77614372b6e4ea98dc4ce88671"
 # IMG_UPLOAD_FIELD = "file"   ← cfbed 默认字段名即 file，无需配置
 # IMG_UPLOAD_TOKEN = "..."   ← 鉴权 token 走仪表板加密机密，勿写进本文件
 # IMG_UPLOAD_QUERY = "token=..."  ← 若图床用查询串鉴权，同样建议放机密

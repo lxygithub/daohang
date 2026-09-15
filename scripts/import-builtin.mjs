@@ -13,8 +13,11 @@ const limit = parseInt(process.argv.find(a => a.startsWith('--limit='))?.slice(8
 if (!KEY) { console.error('缺少 data/import-key.txt'); process.exit(1) }
 
 const sites = JSON.parse(fs.readFileSync(path.join(DIR, 'data', 'builtin-final.json'), 'utf8'))
-const list = limit ? sites.slice(0, limit) : sites
-console.log(`导入 ${list.length}/${sites.length} 条 → ${BASE}`)
+const delta = process.argv.includes('--delta')
+// --delta：仅导入图标已升级为图床外链的行（D1 中这些行此前是原始直链，跳过未变化的行省写额度）
+const list0 = delta ? sites.filter(s => s.icon.includes('/file/builtin-icons/')) : sites
+const list = limit ? list0.slice(0, limit) : list0
+console.log(`导入 ${list.length}/${sites.length} 条${delta ? '（差量：仅图床图标行）' : ''} → ${BASE}`)
 
 const CHUNK = 150
 let done = 0, okN = 0, fail = 0

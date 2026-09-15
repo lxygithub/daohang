@@ -90,6 +90,7 @@ async function uploadIcon(cookie, file) {
 async function upload(args) {
   const conc = parseInt(args.find(a => a.startsWith('--conc='))?.slice(7) || '12', 10)
   const max = parseInt(args.find(a => a.startsWith('--max='))?.slice(6) || '0', 10)
+  const delay = parseInt(args.find(a => a.startsWith('--delay='))?.slice(8) || '0', 10) // 每 worker 每项后间隔 ms（防图床限流）
   const sites = JSON.parse(fs.readFileSync(path.join(DATA, 'builtin-sites.json'), 'utf8'))
   const state = loadState()
   const pending = [...new Set(sites.map(s => s.iconSrc).filter(Boolean))].filter(src => !state.has(src))
@@ -106,15 +107,17 @@ async function upload(args) {
     while (idx < queue.length) {
       const src = queue[idx++]
       let rec = null
-      for (let attempt = 0; attempt < 2 && !rec?.url; attempt++) {
+      // 图床为 CF Worker + TG 存储，偶发 502/1102（flood-wait 周期性）——多次长退避重试
+      for (let attempt = 0; attempt < 5 && !rec?.url; attempt++) {
         const f = await downloadIcon(src)
-        if (f.err) { rec = { src, ok: false, err: f.err }; if (attempt === 0) { await sleep(800); continue } break }
+        if (f.err) { rec = { src, ok: false, err: f.err }; if (attempt < 4) { await sleep(2000 * (attempt + 1)); continue } break }
         const up = await uploadIcon(cookie, f)
         rec = up.url ? { src, ok: true, url: up.url } : { src, ok: false, err: up.err }
-        if (!up.url && attempt === 0) await sleep(800)
+        if (!up.url && attempt < 4) await sleep(2500 * (attempt + 1))
       }
       fs.writeSync(stateFd, JSON.stringify(rec) + '\n')
       rec.ok ? okN++ : failN++
+      if (delay) await sleep(delay)
       if ((okN + failN) % 50 === 0) {
         const rate = (okN + failN) / ((Date.now() - started) / 1000)
         console.log(`进度 ${okN + failN}/${queue.length}｜成功 ${okN}｜失败 ${failN}｜${rate.toFixed(1)}/s｜剩余约 ${Math.round((queue.length - okN - failN) / rate / 60)} 分钟`)
