@@ -10,7 +10,8 @@
     "db:migrate": "wrangler d1 migrations apply daohang --remote",
     "db:export": "node scripts/db-export.mjs",
     "db:import": "node scripts/db-import.mjs",
-    "test:auth": "node scripts/test-auth.mjs"
+    "test:auth": "node scripts/test-auth.mjs",
+    "test:account": "node scripts/test-account.mjs"
   },
   "dependencies": {
     "cropperjs": "^2.1.1",

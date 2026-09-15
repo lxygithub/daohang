@@ -53,7 +53,7 @@ export async function getUserByEmail(env, email) {
 }
 
 export async function getUserById(env, id) {
-  return env.DB.prepare("SELECT id, email, created_at FROM users WHERE id = ?")
+  return env.DB.prepare("SELECT id, email, pwd_hash, created_at FROM users WHERE id = ?")
     .bind(id).first()
 }
 
@@ -96,6 +96,12 @@ export async function purgeExpiredSessions(env) {
   await env.DB.prepare("DELETE FROM sessions WHERE expires_at < ?").bind(nowISO()).run()
 }
 
+/** Revoke every session of the user except the given token hash (keep current device). */
+export async function deleteSessionsExcept(env, userId, keepTokenHash) {
+  await env.DB.prepare("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?")
+    .bind(userId, keepTokenHash).run()
+}
+
 // ---- user_data (per-user key/value, LWW by updated_at) ----
 
 export async function getAllUserData(env, userId) {
@@ -126,4 +132,21 @@ export async function setUserData(env, userId, key, value, updatedAt) {
   await env.DB.prepare(
     "INSERT OR REPLACE INTO user_data (user_id, key, value, updated_at) VALUES (?, ?, ?, ?)"
   ).bind(userId, key, value, updatedAt).run()
+}
+
+// ---- account management ----
+
+export async function updateUserPassword(env, userId, pwdHash) {
+  await env.DB.prepare("UPDATE users SET pwd_hash = ? WHERE id = ?")
+    .bind(pwdHash, userId).run()
+}
+
+/** Atomic cascade delete — D1 batch runs as a single transaction:
+ *  prefs, sessions and the user row all succeed or none do. */
+export async function deleteUserCascade(env, userId) {
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM user_data WHERE user_id = ?").bind(userId),
+    env.DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(userId),
+    env.DB.prepare("DELETE FROM users WHERE id = ?").bind(userId),
+  ])
 }

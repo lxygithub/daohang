@@ -194,6 +194,40 @@ export async function logout() {
   dirty.clear()
 }
 
+// ---- account management ----
+
+export async function changePassword(currentPassword, newPassword) {
+  try {
+    const res = await fetch('/api/user/password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currentPassword, newPassword }),
+    })
+    const d = await res.json().catch(() => ({}))
+    return { ok: res.ok && d.ok !== false, error: d.error || '' }
+  } catch { return { ok: false, error: '网络异常，请稍后再试' } }
+}
+
+export async function deleteAccount(currentPassword) {
+  try {
+    const res = await fetch('/api/user/account', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ currentPassword }),
+    })
+    const d = await res.json().catch(() => ({}))
+    const ok = res.ok && d.ok !== false
+    if (ok) {
+      authed.value = false
+      userEmail.value = ''
+      dirty.clear()
+      ledger = {}            // 云端数据已随账号删除，同步台账归零
+      saveLedger(ledger)
+    }
+    return { ok, error: d.error || '' }
+  } catch { return { ok: false, error: '网络异常，请稍后再试' } }
+}
+
 // ---- wire existing pref events (call once from App onMounted) ----
 
 export function bindPrefEvents() {

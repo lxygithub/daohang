@@ -14,12 +14,12 @@ import EditModal from './components/EditModal.vue'
 import SettingsModal from './components/SettingsModal.vue'
 import PasswordModal from './components/PasswordModal.vue'
 import AuthModal from './components/AuthModal.vue'
+import AccountModal from './components/AccountModal.vue'
 import Toast from './components/Toast.vue'
 import {
   authed, userEmail, checkAuth, pullAndMerge, logout as syncLogout,
   bindPrefEvents, noteConfigSynced,
 } from './composables/sync'
-
 const buildTime = __BUILD_TIME__
 
 const { config, loading, loadConfig, saveConfig } = useConfig()
@@ -383,6 +383,7 @@ const showSettingsModal = ref(false)
 
 // ---- Account (register / login / sync) ----
 const showAuthModal = ref(false)
+const showAccountModal = ref(false)
 const userMenuOpen = ref(false)
 const syncingNow = ref(false)
 
@@ -396,6 +397,18 @@ async function doLogout() {
   await syncLogout()
   showToast('已退出登录')
   // 回到访客视角：重新拉取全局默认配置
+  await loadConfig()
+  applyBackground()
+}
+
+function openAccount() {
+  userMenuOpen.value = false
+  showAccountModal.value = true
+}
+
+async function onAccountDeleted() {
+  showToast('账号已注销，云端数据已清除')
+  // 回到访客视角（本机偏好保留）
   await loadConfig()
   applyBackground()
 }
@@ -819,6 +832,12 @@ onUnmounted(() => {
           </svg>
           {{ syncingNow ? '同步中…' : '立即同步' }}
         </button>
+        <button class="user-menu-item" @click="openAccount">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+          </svg>
+          账号管理
+        </button>
         <button class="user-menu-item danger" @click="doLogout">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
@@ -858,6 +877,12 @@ onUnmounted(() => {
     :visible="showAuthModal"
     @authed="onAuthed"
     @close="showAuthModal = false"
+  />
+
+  <AccountModal
+    :visible="showAccountModal"
+    @close="showAccountModal = false"
+    @deleted="onAccountDeleted"
   />
 
   <Toast :message="toastMessage" :visible="toastVisible" />
