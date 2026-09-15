@@ -27,6 +27,9 @@ export async function onRequest(context) {
       if (!user) await hashPassword(password)
       return json(GENERIC_FAIL, { status: 403 })
     }
+    if (user.disabled) {
+      return json({ ok: false, error: '该账号已被禁用，请联系管理员' }, { status: 403 })
+    }
 
     const token = await startSession(env, user.id)
     purgeExpiredSessions(env).catch(() => {})

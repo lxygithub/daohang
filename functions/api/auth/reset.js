@@ -51,6 +51,10 @@ export async function onRequest(context) {
       await deletePwdReset(env, email)
       return json({ error: '账号不存在' }, { status: 400 })
     }
+    if (user.disabled) {
+      await deletePwdReset(env, email)
+      return json({ error: '该账号已被禁用，无法重置密码' }, { status: 403 })
+    }
 
     await updateUserPassword(env, user.id, await hashPassword(newPassword))
     await deleteAllSessions(env, user.id) // 密码重置 = 全设备下线

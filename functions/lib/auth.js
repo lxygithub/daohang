@@ -74,6 +74,10 @@ export async function getSessionUser(env, request) {
   if (!token) return null
   const row = await getSessionByTokenHash(env, await sha256Hex(token))
   if (!row) return null
+  if (row.disabled) { // 账号被禁用 → 会话即刻作废（全端下线）
+    await deleteSession(env, await sha256Hex(token))
+    return null
+  }
   const expires = Date.parse(row.expires_at)
   if (!expires || expires < Date.now()) { await deleteSession(env, await sha256Hex(token)); return null }
   let renewToken = null

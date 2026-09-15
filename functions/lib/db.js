@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS users (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   email      TEXT    NOT NULL UNIQUE,
   pwd_hash   TEXT    NOT NULL,
+  disabled   INTEGER NOT NULL DEFAULT 0,
   created_at TEXT    NOT NULL
 );
 CREATE TABLE IF NOT EXISTS sessions (
@@ -37,15 +38,20 @@ CREATE INDEX IF NOT EXISTS idx_pwd_resets_expiry ON pwd_resets(expires_at);
 let schemaReady = null // per-isolate promise cache
 
 /** Idempotent bootstrap so git-push deploys work without running wrangler.
- *  Mirrors d1/0002_users.sql. */
+ *  Mirrors d1/0002_users.sql + in-place column migrations. */
 export function ensureSchema(env) {
   if (!schemaReady) {
-    schemaReady = env.DB.batch(
-      SCHEMA_SQL.split(';')
-        .map(s => s.trim())
-        .filter(Boolean)
-        .map(sql => env.DB.prepare(sql))
-    ).catch(e => { schemaReady = null; throw e })
+    schemaReady = (async () => {
+      await env.DB.batch(
+        SCHEMA_SQL.split(';')
+          .map(s => s.trim())
+          .filter(Boolean)
+          .map(sql => env.DB.prepare(sql))
+      )
+      // 老库迁移：补 disabled 列（新库建表已含，报 duplicate column 属预期，静默吞掉）
+      await env.DB.prepare("ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0")
+        .run().catch(() => {})
+    })().catch(e => { schemaReady = null; throw e })
   }
   return schemaReady
 }
@@ -55,12 +61,12 @@ export function nowISO() { return new Date().toISOString() }
 // ---- users ----
 
 export async function getUserByEmail(env, email) {
-  return env.DB.prepare("SELECT id, email, pwd_hash, created_at FROM users WHERE email = ?")
+  return env.DB.prepare("SELECT id, email, pwd_hash, disabled, created_at FROM users WHERE email = ?")
     .bind(email).first()
 }
 
 export async function getUserById(env, id) {
-  return env.DB.prepare("SELECT id, email, pwd_hash, created_at FROM users WHERE id = ?")
+  return env.DB.prepare("SELECT id, email, pwd_hash, disabled, created_at FROM users WHERE id = ?")
     .bind(id).first()
 }
 
@@ -82,7 +88,7 @@ export async function createSession(env, userId, tokenHash, expiresAt) {
 
 export async function getSessionByTokenHash(env, tokenHash) {
   return env.DB.prepare(
-    `SELECT s.id, s.expires_at, s.user_id, u.email
+    `SELECT s.id, s.expires_at, s.user_id, u.email, u.disabled
        FROM sessions s JOIN users u ON u.id = s.user_id
       WHERE s.token_hash = ?`
   ).bind(tokenHash).first()
@@ -153,6 +159,12 @@ export async function updateUserPassword(env, userId, pwdHash) {
     .bind(pwdHash, userId).run()
 }
 
+/** Enable / disable a user account (0 = active, 1 = disabled). */
+export async function setUserDisabled(env, userId, disabled) {
+  await env.DB.prepare("UPDATE users SET disabled = ? WHERE id = ?")
+    .bind(disabled ? 1 : 0, userId).run()
+}
+
 /** Atomic cascade delete — D1 batch runs as a single transaction:
  *  prefs, sessions and the user row all succeed or none do. */
 export async function deleteUserCascade(env, userId) {
@@ -163,14 +175,19 @@ export async function deleteUserCascade(env, userId) {
   ])
 }
 
-/** Admin listing — counts via subqueries, never exposes pwd_hash. */
-export async function listUsersWithStats(env) {
+/** Admin listing — optional email substring search, counts via subqueries,
+ *  never exposes pwd_hash. */
+export async function listUsersWithStats(env, q = '') {
+  const raw = String(q || '').trim().toLowerCase()
+  const like = '%' + raw.replace(/[\\%_]/g, ch => '\\' + ch) + '%'
   const { results } = await env.DB.prepare(
-    `SELECT u.id, u.email, u.created_at,
+    `SELECT u.id, u.email, u.created_at, u.disabled,
             (SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id) AS sessions,
             (SELECT COUNT(*) FROM user_data d WHERE d.user_id = u.id) AS prefs
-       FROM users u ORDER BY u.id`
-  ).all()
+       FROM users u
+      WHERE u.email LIKE ? ESCAPE '\\'
+      ORDER BY u.id`
+  ).bind(like).all()
   return results || []
 }
 

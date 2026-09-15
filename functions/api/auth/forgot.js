@@ -30,7 +30,7 @@ export async function onRequest(context) {
     }
 
     const user = await getUserByEmail(env, email)
-    if (user) {
+    if (user && !user.disabled) { // 禁用账号不发码（对外响应保持一致，防枚举）
       const code = randomCode()
       await upsertPwdReset(env, email, await sha256Hex(code), new Date(Date.now() + CODE_TTL_MS).toISOString())
       purgeExpiredPwdResets(env).catch(() => {})

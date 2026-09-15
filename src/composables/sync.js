@@ -279,9 +279,10 @@ async function sendAdmin(path, body) {
   return { ok: res.ok && d.ok !== false, error: d.error || '', data: d }
 }
 
-export async function adminListUsers() {
+export async function adminListUsers(q = '') {
   try {
-    const res = await fetch('/api/admin/users')
+    const url = q ? `/api/admin/users?q=${encodeURIComponent(q)}` : '/api/admin/users'
+    const res = await fetch(url)
     const d = await res.json().catch(() => ({}))
     if (res.status === 403) return { ok: false, error: '需要管理员权限', users: [] }
     return { ok: res.ok && d.ok !== false, error: d.error || '', users: d.users || [] }
@@ -290,6 +291,7 @@ export async function adminListUsers() {
 
 export const adminResetPassword = (userId, newPassword) => sendAdmin('/api/admin/reset-password', { userId, newPassword })
 export const adminDeleteUser = (userId) => sendAdmin('/api/admin/delete-user', { userId })
+export const adminSetDisabled = (userId, disabled) => sendAdmin('/api/admin/set-disabled', { userId, disabled })
 
 // ---- wire existing pref events (call once from App onMounted) ----
 
