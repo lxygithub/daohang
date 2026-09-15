@@ -39,7 +39,9 @@ const loading = ref(true)
 
 export function useConfig() {
   async function loadConfig() {
-    loading.value = true
+    // 已有配置时静默刷新：不翻转 loading，避免 App.vue 的 v-if="loading"
+    // 把整个 NavGrid 卸载重挂（登录用户每次刷新 pullAndMerge 都会二次拉取 → 图标闪没再闪回）
+    loading.value = config.value === null
     const fallback = getDefaultConfig()
     try {
       const res = await fetch('/api/config')

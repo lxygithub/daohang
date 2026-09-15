@@ -300,6 +300,10 @@ function handleSearchEnter() {
 // ---- Long-press edit mode (global) ----
 const editMode = ref(false)
 
+// 首屏入场动画窗口：fadeInUp 只在 .app-boot 下生效，加载完成后摘除，
+// 此后编辑模式进出（wiggle ↔ 无动画）不会重放入场动画
+const appBooted = ref(false)
+
 function setEditMode(v) {
   editMode.value = v
 }
@@ -566,6 +570,8 @@ onMounted(async () => {
   fetchQuote()
   await loadConfig()
   applyBackground()
+  // 入场动画（含最长 0.5s stagger + 0.45s 动画本身）播完后再摘除 .app-boot
+  setTimeout(() => { appBooted.value = true }, 1100)
   // 会话仍有效时静默同步一次云端偏好
   if (await checkAuth()) pullAndMerge()
 })
@@ -597,7 +603,7 @@ onUnmounted(() => {
   </div>
 
   <!-- Page -->
-  <main class="page">
+  <main class="page" :class="{ 'app-boot': !appBooted }">
     <section class="hero">
       <template v-if="heroPrefs.showClock">
         <div class="clock">

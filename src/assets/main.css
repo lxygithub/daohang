@@ -358,6 +358,11 @@ html[data-theme="light"] .hero-meta .festival { color: #d43e3e; }
   user-select: none;
   transition: transform 0.25s var(--ease), box-shadow 0.25s var(--ease),
     background 0.25s, border-color 0.25s, opacity 0.2s;
+}
+/* 入场动画只挂在 .app-boot（首屏加载窗口期）下：
+   若直接写在 .card，编辑模式的 .card.edit-mode{animation:wiggle} 会覆盖 shorthand，
+   退出编辑时 animation 换回 fadeInUp → 全部卡片重放入场动画（闪一下） */
+.app-boot .card {
   animation: fadeInUp 0.45s var(--ease) both;
 }
 .card:hover {
@@ -750,7 +755,9 @@ html[data-theme="light"] .card-icon.icon-text-mode {
    Forms
    ============================================================ */
 .form-group { margin-bottom: 18px; }
-.form-group > label {
+/* :not(.switch-row) —— switch-row 本身就是 label，且常为 form-group 直接子级；
+   若被本规则命中会被强制 display:block，内部 .switch 滑轨塌陷为 0 宽（只剩圆点） */
+.form-group > label:not(.switch-row) {
   display: block;
   font-size: 0.8rem;
   font-weight: 600;
