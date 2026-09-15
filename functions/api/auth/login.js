@@ -1,6 +1,6 @@
 // POST /api/auth/login  { email, password }
 import { ensureSchema, getUserByEmail, purgeExpiredSessions } from '../../lib/db.js'
-import { hashPassword, verifyPassword, startSession, sessionCookie, json, rateLimit, clientIP, sameOrigin } from '../../lib/auth.js'
+import { hashPassword, verifyPassword, startSession, sessionCookie, json, rateLimit, clientIP, sameOrigin, isAdminEmail } from '../../lib/auth.js'
 
 // Registration seeds nothing; login never reveals whether the account exists.
 const GENERIC_FAIL = { ok: false, error: '邮箱或密码错误' }
@@ -30,7 +30,7 @@ export async function onRequest(context) {
 
     const token = await startSession(env, user.id)
     purgeExpiredSessions(env).catch(() => {})
-    return json({ ok: true, email: user.email }, { headers: { 'Set-Cookie': sessionCookie(token) } })
+    return json({ ok: true, email: user.email, isAdmin: isAdminEmail(env, user.email) }, { headers: { 'Set-Cookie': sessionCookie(token) } })
   } catch (e) {
     return json({ error: e.message || '登录失败' }, { status: 500 })
   }

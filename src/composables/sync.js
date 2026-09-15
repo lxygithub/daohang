@@ -14,6 +14,7 @@ import { applyFont } from './usePrefs'
 
 export const authed = ref(false)
 export const userEmail = ref('')
+export const isAdmin = ref(false)
 
 const LEDGER_KEY = 'nav_sync_t'   // { [syncKey]: epochMs } 本地最后修改时间台账
 const DEBOUNCE_MS = 1500
@@ -157,9 +158,11 @@ export async function checkAuth() {
       const d = await res.json()
       authed.value = !!d.ok
       userEmail.value = d.email || ''
+      isAdmin.value = !!d.isAdmin
     } else {
       authed.value = false
       userEmail.value = ''
+      isAdmin.value = false
     }
   } catch { authed.value = false }
   return authed.value
@@ -172,18 +175,26 @@ async function postJSON(url, body) {
     body: JSON.stringify(body),
   })
   const d = await res.json().catch(() => ({}))
-  return { ok: res.ok && d.ok !== false, error: d.error || '', status: res.status }
+  return { ok: res.ok && d.ok !== false, error: d.error || '', status: res.status, data: d }
 }
 
 export async function login(email, password) {
   const r = await postJSON('/api/auth/login', { email, password })
-  if (r.ok) { authed.value = true; userEmail.value = email.trim().toLowerCase() }
+  if (r.ok) {
+    authed.value = true
+    userEmail.value = email.trim().toLowerCase()
+    isAdmin.value = !!r.data?.isAdmin
+  }
   return r
 }
 
 export async function register(email, password) {
   const r = await postJSON('/api/auth/register', { email, password })
-  if (r.ok) { authed.value = true; userEmail.value = email.trim().toLowerCase() }
+  if (r.ok) {
+    authed.value = true
+    userEmail.value = email.trim().toLowerCase()
+    isAdmin.value = !!r.data?.isAdmin
+  }
   return r
 }
 
@@ -191,6 +202,7 @@ export async function logout() {
   try { await fetch('/api/auth/logout', { method: 'POST' }) } catch {}
   authed.value = false
   userEmail.value = ''
+  isAdmin.value = false
   dirty.clear()
 }
 
@@ -220,6 +232,7 @@ export async function deleteAccount(currentPassword) {
     if (ok) {
       authed.value = false
       userEmail.value = ''
+      isAdmin.value = false
       dirty.clear()
       ledger = {}            // 云端数据已随账号删除，同步台账归零
       saveLedger(ledger)
@@ -227,6 +240,56 @@ export async function deleteAccount(currentPassword) {
     return { ok, error: d.error || '' }
   } catch { return { ok: false, error: '网络异常，请稍后再试' } }
 }
+
+// ---- password recovery ----
+
+export async function forgotPassword(email) {
+  try {
+    const res = await fetch('/api/auth/forgot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    })
+    const d = await res.json().catch(() => ({}))
+    return { ok: res.ok && d.ok !== false, error: d.error || '', message: d.message || '' }
+  } catch { return { ok: false, error: '网络异常，请稍后再试', message: '' } }
+}
+
+export async function resetPassword(email, code, newPassword) {
+  try {
+    const res = await fetch('/api/auth/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, code, newPassword }),
+    })
+    const d = await res.json().catch(() => ({}))
+    return { ok: res.ok && d.ok !== false, error: d.error || '', message: d.message || '' }
+  } catch { return { ok: false, error: '网络异常，请稍后再试', message: '' } }
+}
+
+// ---- admin ----
+
+async function sendAdmin(path, body) {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  })
+  const d = await res.json().catch(() => ({}))
+  return { ok: res.ok && d.ok !== false, error: d.error || '', data: d }
+}
+
+export async function adminListUsers() {
+  try {
+    const res = await fetch('/api/admin/users')
+    const d = await res.json().catch(() => ({}))
+    if (res.status === 403) return { ok: false, error: '需要管理员权限', users: [] }
+    return { ok: res.ok && d.ok !== false, error: d.error || '', users: d.users || [] }
+  } catch { return { ok: false, error: '网络异常，请稍后再试', users: [] } }
+}
+
+export const adminResetPassword = (userId, newPassword) => sendAdmin('/api/admin/reset-password', { userId, newPassword })
+export const adminDeleteUser = (userId) => sendAdmin('/api/admin/delete-user', { userId })
 
 // ---- wire existing pref events (call once from App onMounted) ----
 

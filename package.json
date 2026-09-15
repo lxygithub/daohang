@@ -11,7 +11,9 @@
     "db:export": "node scripts/db-export.mjs",
     "db:import": "node scripts/db-import.mjs",
     "test:auth": "node scripts/test-auth.mjs",
-    "test:account": "node scripts/test-account.mjs"
+    "test:account": "node scripts/test-account.mjs",
+    "test:admin": "node scripts/test-admin-reset.mjs",
+    "mock:resend": "node scripts/mock-resend.mjs"
   },
   "dependencies": {
     "cropperjs": "^2.1.1",

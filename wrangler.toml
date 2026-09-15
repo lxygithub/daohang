@@ -6,6 +6,12 @@ pages_build_output_dir = "dist"
 # 管理密码（仅存在于服务端，不会打包进前端）。
 # 建议部署后在 Cloudflare Dashboard 加密环境变量，或改用 ADMIN_PASSWORD_SHA256（密码的 sha256 十六进制值）。
 ADMIN_PASSWORD = "mewlxy"
+# 管理员账号（逗号分隔可多个）。这些邮箱登录后显示「用户管理」入口，可重置/删除任意用户。
+ADMIN_EMAILS = "594328762@qq.com"
+# 找回密码邮件（Resend）：RESEND_API_KEY 请部署后在 Dashboard 以加密变量配置，勿写进本文件。
+# 未验证自有域名前，Resend 默认发件地址 onboarding@resend.dev 只能投递到 Resend 账号本人邮箱；
+# 正式启用请先在 Resend 验证域名，并设置 RESET_MAIL_FROM = "导航 <noreply@你的域名>"。
+# RESET_MAIL_FROM = "daohang <onboarding@resend.dev>"
 
 [[d1_databases]]
 binding = "DB"

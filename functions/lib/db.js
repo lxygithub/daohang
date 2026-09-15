@@ -23,8 +23,15 @@ CREATE TABLE IF NOT EXISTS user_data (
   updated_at TEXT    NOT NULL,
   PRIMARY KEY (user_id, key)
 );
+CREATE TABLE IF NOT EXISTS pwd_resets (
+  email      TEXT PRIMARY KEY,
+  code_hash  TEXT    NOT NULL,
+  expires_at TEXT    NOT NULL,
+  attempts   INTEGER NOT NULL DEFAULT 0
+);
 CREATE INDEX IF NOT EXISTS idx_sessions_user   ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_pwd_resets_expiry ON pwd_resets(expires_at);
 `;
 
 let schemaReady = null // per-isolate promise cache
@@ -102,6 +109,11 @@ export async function deleteSessionsExcept(env, userId, keepTokenHash) {
     .bind(userId, keepTokenHash).run()
 }
 
+/** Revoke ALL sessions of the user (used after admin/reset password changes). */
+export async function deleteAllSessions(env, userId) {
+  await env.DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(userId).run()
+}
+
 // ---- user_data (per-user key/value, LWW by updated_at) ----
 
 export async function getAllUserData(env, userId) {
@@ -149,4 +161,40 @@ export async function deleteUserCascade(env, userId) {
     env.DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(userId),
     env.DB.prepare("DELETE FROM users WHERE id = ?").bind(userId),
   ])
+}
+
+/** Admin listing — counts via subqueries, never exposes pwd_hash. */
+export async function listUsersWithStats(env) {
+  const { results } = await env.DB.prepare(
+    `SELECT u.id, u.email, u.created_at,
+            (SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id) AS sessions,
+            (SELECT COUNT(*) FROM user_data d WHERE d.user_id = u.id) AS prefs
+       FROM users u ORDER BY u.id`
+  ).all()
+  return results || []
+}
+
+// ---- password resets (email verification codes) ----
+
+export async function upsertPwdReset(env, email, codeHash, expiresAt) {
+  await env.DB.prepare(
+    "INSERT OR REPLACE INTO pwd_resets (email, code_hash, expires_at, attempts) VALUES (?, ?, ?, 0)"
+  ).bind(email, codeHash, expiresAt).run()
+}
+
+export async function getPwdReset(env, email) {
+  return env.DB.prepare("SELECT email, code_hash, expires_at, attempts FROM pwd_resets WHERE email = ?")
+    .bind(email).first()
+}
+
+export async function bumpPwdResetAttempts(env, email, attempts) {
+  await env.DB.prepare("UPDATE pwd_resets SET attempts = ? WHERE email = ?").bind(attempts, email).run()
+}
+
+export async function deletePwdReset(env, email) {
+  await env.DB.prepare("DELETE FROM pwd_resets WHERE email = ?").bind(email).run()
+}
+
+export async function purgeExpiredPwdResets(env) {
+  await env.DB.prepare("DELETE FROM pwd_resets WHERE expires_at < ?").bind(nowISO()).run()
 }

@@ -55,6 +55,7 @@ function timingSafeEqual(a, b) {
   for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i)
   return r === 0
 }
+export { timingSafeEqual }
 
 // ---- sessions ----
 
@@ -140,6 +141,37 @@ export function rateLimit(key, max = MAX_ATTEMPTS) {
 
 export function clientIP(request) {
   return request.headers.get('CF-Connecting-IP') || 'local'
+}
+
+// ---- admin ----
+// 管理员按邮箱判定：env.ADMIN_EMAILS（逗号分隔）优先，未配置时回落到内置默认。
+
+export const DEFAULT_ADMIN_EMAIL = '594328762@qq.com'
+
+export function adminEmails(env) {
+  const raw = String(env?.ADMIN_EMAILS || '').trim()
+  const list = raw
+    ? raw.split(',').map(s => s.trim().toLowerCase()).filter(Boolean)
+    : [DEFAULT_ADMIN_EMAIL]
+  return new Set(list)
+}
+
+export function isAdminEmail(env, email) {
+  return adminEmails(env).has(String(email || '').trim().toLowerCase())
+}
+
+/** Session guard for admin endpoints. Returns sess or null. */
+export async function requireAdmin(env, request) {
+  const sess = await getSessionUser(env, request)
+  if (!sess || !isAdminEmail(env, sess.user.email)) return null
+  return sess
+}
+
+/** 6-digit numeric code (crypto random). */
+export function randomCode() {
+  const a = new Uint32Array(1)
+  crypto.getRandomValues(a)
+  return String(a[0] % 1000000).padStart(6, '0')
 }
 
 export { nowISO }

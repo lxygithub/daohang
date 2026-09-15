@@ -15,9 +15,10 @@ import SettingsModal from './components/SettingsModal.vue'
 import PasswordModal from './components/PasswordModal.vue'
 import AuthModal from './components/AuthModal.vue'
 import AccountModal from './components/AccountModal.vue'
+import AdminModal from './components/AdminModal.vue'
 import Toast from './components/Toast.vue'
 import {
-  authed, userEmail, checkAuth, pullAndMerge, logout as syncLogout,
+  authed, userEmail, isAdmin, checkAuth, pullAndMerge, logout as syncLogout,
   bindPrefEvents, noteConfigSynced,
 } from './composables/sync'
 const buildTime = __BUILD_TIME__
@@ -384,6 +385,7 @@ const showSettingsModal = ref(false)
 // ---- Account (register / login / sync) ----
 const showAuthModal = ref(false)
 const showAccountModal = ref(false)
+const showAdminModal = ref(false)
 const userMenuOpen = ref(false)
 const syncingNow = ref(false)
 
@@ -404,6 +406,11 @@ async function doLogout() {
 function openAccount() {
   userMenuOpen.value = false
   showAccountModal.value = true
+}
+
+function openAdmin() {
+  userMenuOpen.value = false
+  showAdminModal.value = true
 }
 
 async function onAccountDeleted() {
@@ -832,6 +839,12 @@ onUnmounted(() => {
           </svg>
           {{ syncingNow ? '同步中…' : '立即同步' }}
         </button>
+        <button v-if="isAdmin" class="user-menu-item" @click="openAdmin">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+          用户管理
+        </button>
         <button class="user-menu-item" @click="openAccount">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
@@ -883,6 +896,11 @@ onUnmounted(() => {
     :visible="showAccountModal"
     @close="showAccountModal = false"
     @deleted="onAccountDeleted"
+  />
+
+  <AdminModal
+    :visible="showAdminModal"
+    @close="showAdminModal = false"
   />
 
   <Toast :message="toastMessage" :visible="toastVisible" />

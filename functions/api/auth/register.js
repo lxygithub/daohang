@@ -1,6 +1,6 @@
 // POST /api/auth/register  { email, password }
 import { ensureSchema, getUserByEmail, createUser } from '../../lib/db.js'
-import { hashPassword, startSession, sessionCookie, json, rateLimit, clientIP, sameOrigin } from '../../lib/auth.js'
+import { hashPassword, startSession, sessionCookie, json, rateLimit, clientIP, sameOrigin, isAdminEmail } from '../../lib/auth.js'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 
@@ -24,7 +24,7 @@ export async function onRequest(context) {
 
     const userId = await createUser(env, email, await hashPassword(password))
     const token = await startSession(env, userId)
-    return json({ ok: true, email }, { headers: { 'Set-Cookie': sessionCookie(token) } })
+    return json({ ok: true, email, isAdmin: isAdminEmail(env, email) }, { headers: { 'Set-Cookie': sessionCookie(token) } })
   } catch (e) {
     return json({ error: e.message || '注册失败' }, { status: 500 })
   }
