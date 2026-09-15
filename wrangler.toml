@@ -16,11 +16,9 @@ pages_build_output_dir = "dist"
 ADMIN_EMAILS = "594328762@qq.com"
 
 # 找回密码邮件（Brevo：免费 300 封/天，无需验证域名，邮件可能进垃圾箱属正常）。
-# 上线三步：
-#   1) brevo.com 注册 → Senders 添加并验证发件人邮箱（如 594328762@qq.com）
-#   2) 发件人写在这里（非机密，必须是上一步验证过的邮箱）：
-# RESET_MAIL_FROM = "daohang <594328762@qq.com>"
-#   3) Dashboard 添加加密机密：BREVO_API_KEY = "xkeysib-..."（勿写进本文件）
+# 发件人须先在 brevo.com → Senders 验证（当前用的 QQ 邮箱；如验证的是别的邮箱请改下行）；
+# BREVO_API_KEY 在 Dashboard 以加密机密配置，不进本文件。
+RESET_MAIL_FROM = "daohang <594328762@qq.com>"
 # 兼容备用：旧 Resend 通道仍保留——仅当未配置 BREVO_API_KEY 而配置了 RESEND_API_KEY（机密）时启用。
 
 # 管理密码：明文不放这里（会随 Git 进仓库）。
