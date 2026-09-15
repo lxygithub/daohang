@@ -8,6 +8,7 @@ import {
   lanAutoFill,
   publicFallbackIcon,
   mixedContentBlocked,
+  guessLanName,
 } from '../utils/siteMeta'
 
 const props = defineProps({
@@ -112,6 +113,12 @@ async function autoFetch(silent = false) {
     lan = isPrivateHost(new URL(normalized).hostname)
     if (lan) {
       data = await lanAutoFill(normalized)
+      // 内网页面标题受 CORS 限制通常读不到：按端口推测服务名（群晖/Jellyfin/HA 等），
+      // 推测不出用地址兑底，避免名称栏空着（均可改）
+      if (!data.title) {
+        data.title = guessLanName(normalized)
+        data.titleGuessed = !!data.title
+      }
     } else {
       const res = await fetch(`/api/meta?url=${encodeURIComponent(normalized)}`, { signal: ctrl.signal })
       data = await res.json()
@@ -134,7 +141,8 @@ async function autoFetch(silent = false) {
       got = true
     }
     if (!silent) {
-      if (got) showToast(lan ? '已自动填充（浏览器直连）' : '已自动填充')
+      if (got && data.titleGuessed) showToast('图标已获取；内网页面读不到标题（浏览器安全策略），名称已按地址预填，可修改')
+      else if (got) showToast(lan ? '已自动填充（浏览器直连）' : '已自动填充')
       else if (lan && mixedContentBlocked(normalized)) showToast('HTTPS 页面无法读取 HTTP 内网资源（浏览器拦截），建议手动上传图标')
       else if (data.error) showToast(`未能获取（${data.error}），可手动填写`)
       else showToast('未能获取，可手动填写')

@@ -17,6 +17,7 @@ import {
   isPrivateHost as feIsPrivateHost,
   extractTitle as feExtractTitle,
   mixedContentBlocked,
+  guessLanName,
 } from '../src/utils/siteMeta.js'
 
 const PNG = Buffer.from(
@@ -241,6 +242,19 @@ await test('前端 extractTitle：og:title 优先 + 实体解码', () => {
 })
 await test('mixedContentBlocked：Node 环境（无 location）返回 false', () => {
   assert.equal(mixedContentBlocked('http://192.168.1.1'), false)
+})
+await test('guessLanName：常见自托管端口识别为服务名', () => {
+  assert.equal(guessLanName('http://192.168.1.10:5000'), '群晖 DSM')
+  assert.equal(guessLanName('https://192.168.1.10:5001'), '群晖 DSM')
+  assert.equal(guessLanName('http://nas.local:8096/'), 'Jellyfin/Emby')
+  assert.equal(guessLanName('http://192.168.1.2:32400/web'), 'Plex')
+  assert.equal(guessLanName('http://192.168.1.2:8123/'), 'Home Assistant')
+  assert.equal(guessLanName('http://192.168.1.2:5244/'), 'Alist')
+})
+await test('guessLanName：未知端口用地址:端口兜底', () => {
+  assert.equal(guessLanName('http://192.168.1.10:9999/'), '192.168.1.10:9999')
+  assert.equal(guessLanName('http://192.168.1.10/'), '192.168.1.10')
+  assert.equal(guessLanName('https://nas.local/'), 'nas.local')
 })
 
 server.close()

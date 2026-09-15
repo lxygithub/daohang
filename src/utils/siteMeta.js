@@ -124,6 +124,29 @@ async function fetchClientHtml(siteUrl, timeout = 4000) {
   }
 }
 
+// 内网页面标题受 CORS 限制通常读不到（目标服务不带 Access-Control-Allow-Origin），
+// 图标却总能拿到（<img> 不受限制）——为避免名称栏空着，按端口推测常见自托管服务名，
+// 推测不出则用「地址[:端口]」兜底。均为预填，用户可改。
+const LAN_PORT_NAMES = {
+  5000: '群晖 DSM',
+  5001: '群晖 DSM',
+  8096: 'Jellyfin/Emby',
+  32400: 'Plex',
+  8123: 'Home Assistant',
+  9091: 'Transmission',
+  5244: 'Alist',
+  9090: 'Cockpit',
+}
+
+export function guessLanName(siteUrl) {
+  let u
+  try { u = new URL(siteUrl) } catch { return '' }
+  const port = u.port ? Number(u.port) : (/^https:/i.test(u.protocol) ? 443 : 80)
+  if (LAN_PORT_NAMES[port]) return LAN_PORT_NAMES[port]
+  const isDefault = (u.protocol === 'https:' && port === 443) || (u.protocol === 'http:' && port === 80)
+  return isDefault ? u.hostname : `${u.hostname}:${u.port}`
+}
+
 // 内网服务：浏览器直连拿标题 + 图标。
 // 1) fetch HTML（CORS 视服务而定，拿到则标题+图标一起返回）
 // 2) Image 探测常见 favicon 路径（不受 CORS 限制，多数内网服务可命中）
