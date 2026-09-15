@@ -21,11 +21,10 @@ ADMIN_EMAILS = "594328762@qq.com"
 RESET_MAIL_FROM = "daohang <mewlxyy666@gmail.com>"
 # 兼容备用：旧 Resend 通道仍保留——仅当未配置 BREVO_API_KEY 而配置了 RESEND_API_KEY（机密）时启用。
 
-# 自建图床（可选）：配置后编辑弹窗上传的图标自动转存图床换外链，不再 base64 内联。
-# 接口约定：POST multipart/form-data，文件在 IMG_UPLOAD_FIELD 字段（默认 file），
-# 响应 JSON/文本中含图片 URL 即可（兼容绝大多数开源自建图床，如基于 Telegram 的项目）。
-# IMG_UPLOAD_API = "https://你的图床域名/upload"
-# IMG_UPLOAD_FIELD = "file"
+# 自建图床（CloudFlare-ImgBed，已启用）：编辑弹窗上传的图标自动转存图床换外链，
+# 不再 base64 内联。鉴权 Bearer IMG_UPLOAD_TOKEN 走仪表板加密机密。
+IMG_UPLOAD_API = "https://img-bed.ieoc.top/upload"
+# IMG_UPLOAD_FIELD = "file"   ← cfbed 默认字段名即 file，无需配置
 # IMG_UPLOAD_TOKEN = "..."   ← 鉴权 token 走仪表板加密机密，勿写进本文件
 # IMG_UPLOAD_QUERY = "token=..."  ← 若图床用查询串鉴权，同样建议放机密
 
