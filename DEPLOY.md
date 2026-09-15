@@ -120,7 +120,15 @@ npm run icons:apply      # 4. 把转存结果写回 → builtin-final.json（失
 npm run builtin:import   # 5. 全量导入 D1（upsert 幂等，需先 re-arm 密钥）；增量升级图标加 --delta
 ```
 
-**导入密钥（re-arm / disarm）**：导入端点 `/api/builtin-sites/import` 由 `wrangler.toml [vars]` 的 `BUILTIN_IMPORT_KEY` 门禁。仓库公开，密钥只在导入窗口临时存在：导入前在该文件加回一行 `BUILTIN_IMPORT_KEY = "<openssl rand -hex 32 生成>"` 并同步写进 `scripts/data/import-key.txt`，推送部署后跑 `npm run builtin:import`，完成后立即删除该行再推送（disarm）。密钥暴露窗口 ≈ 导入窗口（分钟级），端点仅可写站点库两表且有行数上限。
+**当前进度快照（2026-09-15）**：
+
+- ✅ 已完成：19,626 站点全量入库；首次 `icons:apply` + `--delta` 导入（1,578 站图标已换图床外链）；导入通道已 disarm。
+- 🔄 进行中：图标转存 2,528 / 19,178 个唯一图标源（≈13%），断点续传——`npm run icons:rehost` 反复跑到「待转存 0」为止；图床偶发 502/1102 属 CF Worker 瞬时过载，停几分钟再跑即可（建议 `-- --conc=9 --delay=200`）。
+- ⏳ 转存全部完成后：① `npm run icons:apply` 重新生成 builtin-final.json（当前文件为早期快照，落后于状态文件）；② re-arm（**必须用新密钥**，见下）→ `npm run builtin:import -- --delta` → 再 disarm。
+- ⚠️ 重试失败项：`upload` 重跑只补「从未尝试过」的源，已记录的失败项（`ok:false`）不会自动重试；如状态文件出现失败行，先剔除再跑：
+  `grep -v '"ok":false' scripts/data/rehost-state.jsonl > scripts/data/rehost-state.tmp && mv scripts/data/rehost-state.tmp scripts/data/rehost-state.jsonl`
+
+**导入密钥（re-arm / disarm）**：导入端点 `/api/builtin-sites/import` 由 `wrangler.toml [vars]` 的 `BUILTIN_IMPORT_KEY` 门禁。仓库公开，密钥只在导入窗口临时存在：导入前在该文件加回一行 `BUILTIN_IMPORT_KEY = "<openssl rand -hex 32 生成>"` 并同步写进 `scripts/data/import-key.txt`（**每次 re-arm 都必须生成新值**：2026-09-15 之前武装用的那枚密钥已随提交 619bcf0 进入公开 Git 历史，视为已泄露——`import-key.txt` 里的旧值同样作废，不可复用），推送部署后跑 `npm run builtin:import`，完成后立即删除该行再推送（disarm）。密钥暴露窗口 ≈ 导入窗口（分钟级），端点仅可写站点库两表且有行数上限。
 
 **额度注意**：D1 免费档每日 10 万行写入。单次全量导入 ≈ 3.5 万行（站点 upsert + 分类关联清插）；同日反复全量重导或叠加站点日常写入可能触发当日限额（表现：登录/保存配置报 D1_ERROR，读取不受影响，次日自动恢复）。日常图标增量升级用 `icons:apply` 的差量导入更省额度。
 
@@ -131,11 +139,11 @@ npm run builtin:import   # 5. 全量导入 D1（upsert 幂等，需先 re-arm �
 - 管理员账号（含自己）不可被禁用或删除，前端按钮与服务端双重保护。
 - 回退行为：`ADMIN_PASSWORD` 与 `ADMIN_PASSWORD_SHA256` 都未配置时，服务端回退内置默认密码（与历史仓库一致）——**首次部署后请立刻在仪表板配置加密机密**。
 
-## 七、自定义域名（可选）
+## 八、自定义域名（可选）
 
 Pages 项目 → Custom domains → Set up a custom domain，按提示在域名 DNS 处添加 CNAME 记录指向 `你的项目.pages.dev`，证书自动签发。国内访问建议套一层自选优选 CDN 或使用已备案域名直连。
 
-## 八、常见问题（FAQ）
+## 九、常见问题（FAQ）
 
 **没收到验证码邮件？**
 按顺序排查：① 垃圾箱；② Brevo 后台 Logs 是否有发送记录与退信原因；③ 发件人是否在 Brevo Senders 验证过、与 `RESET_MAIL_FROM` 是否一致；④ 是否超出 300 封/天额度；⑤ 变量是否在 push/重新部署后才配置（需再部署一次生效）。
