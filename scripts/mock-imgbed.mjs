@@ -1,6 +1,6 @@
 // 极简自建图床 mock（本地测试 /api/upload 转发用）：
-//   * 接受任意 multipart POST，返回常见图床 JSON 结构 { code, data: { url } }
-//   * GET /last 可查看最近一次上传的元信息
+//   * 接受任意 multipart POST，返回 CloudFlare-ImgBed 形态 JSON 数组 [{ src: '/file/xxx' }]
+//   * GET /last 可查看最近一次上传的元信息（含鉴权头与查询串，用于断言代理转发）
 // 用法：node scripts/mock-imgbed.mjs   （端口 9001，可用 PORT 覆盖）
 import http from 'node:http'
 
@@ -14,7 +14,11 @@ http.createServer((req, res) => {
     req.on('end', () => {
       const ct = req.headers['content-type'] || ''
       const id = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}.png`
-      last = { at: new Date().toISOString(), size, contentType: ct }
+      last = {
+        at: new Date().toISOString(), size, contentType: ct,
+        authorization: req.headers['authorization'] || '',
+        url: req.url, // 含查询串，断言 IMG_UPLOAD_QUERY 是否被拼上
+      }
       // CloudFlare-ImgBed 真实响应形态：JSON 数组 + 相对路径 src
       res.writeHead(200, { 'Content-Type': 'application/json' })
       res.end(JSON.stringify([{ src: `/file/${id}` }]))

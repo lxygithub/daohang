@@ -1,7 +1,7 @@
 // API 级端到端测试：自建图床上传代理 /api/upload
 // 前置：
 //   1. node scripts/mock-imgbed.mjs            （图床 mock，端口 9001）
-//   2. wrangler pages dev（.dev.vars 含 IMG_UPLOAD_API=http://127.0.0.1:9001/upload）
+//   2. wrangler pages dev（.dev.vars 含 IMG_UPLOAD_API、IMG_UPLOAD_TOKEN、IMG_UPLOAD_QUERY）
 // 用法：node scripts/test-upload.mjs
 const BASE = process.env.BASE || 'http://127.0.0.1:8788'
 const IMGBED = 'http://127.0.0.1:9001'
@@ -66,10 +66,13 @@ let gotUrl = ''
   gotUrl = d.url || ''
 }
 
-// 5. mock 图床确实收到了multipart（字段消费、体积>0）
+// 5. mock 图床确实收到了 multipart，且鉴权信息被正确转发
+//    （Bearer 头 ← IMG_UPLOAD_TOKEN；查询串 ← IMG_UPLOAD_QUERY，cfbed authCode 即走这两路之一）
 {
   const last = await (await fetch(IMGBED + '/last')).json()
   ok((last.size || 0) > 0, 'mock bed received multipart body')
+  ok(last.authorization === 'Bearer dev-upload-token', `Bearer token forwarded (got ${JSON.stringify(last.authorization)})`)
+  ok(String(last.url || '').includes('authCode=dev-auth-code'), `query auth forwarded (got ${JSON.stringify(last.url)})`)
 }
 
 // 6. 非图片文件 → 415
