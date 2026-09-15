@@ -1,5 +1,5 @@
 <script setup>
-import { computed, inject, ref } from 'vue'
+import { computed, inject, ref, watch } from 'vue'
 
 const props = defineProps({
   service: { type: Object, required: true },
@@ -36,8 +36,13 @@ const host = computed(() => {
 // ---- Solid-color text icon fallback ----
 // Shown only when no icon was auto-fetched and the user hasn't uploaded one.
 // Legacy emoji / preset icons render as text icons too (both pickers are gone).
+// 图标 URL 加载失败（404/防盗链）也回退文字图标，避免破图挂在网上
+const iconFailed = ref(false)
+watch(() => props.service.icon, () => { iconFailed.value = false })
+
 const isTextIcon = computed(() =>
   !props.service.icon ||
+  iconFailed.value ||
   props.service.iconType === 'text' ||
   props.service.iconType === 'emoji' ||
   props.service.iconType === 'preset'
@@ -229,6 +234,7 @@ function handleTouchEnd() {
           :src="service.icon"
           :alt="service.name"
           referrerpolicy="no-referrer"
+          @error="iconFailed = true"
         >
         <span v-if="isTextIcon" class="card-icon-text">{{ textChar }}</span>
       </div>

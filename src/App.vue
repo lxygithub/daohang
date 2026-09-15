@@ -11,6 +11,7 @@ import solarlunar from 'solarlunar'
 const { solar2lunar, getFestivals } = solarlunar
 import NavGrid from './components/NavGrid.vue'
 import EditModal from './components/EditModal.vue'
+import BuiltinModal from './components/BuiltinModal.vue'
 import SettingsModal from './components/SettingsModal.vue'
 import PasswordModal from './components/PasswordModal.vue'
 import AuthModal from './components/AuthModal.vue'
@@ -367,6 +368,7 @@ function onPasswordCancel() {
 // Edit modal
 const showEditModal = ref(false)
 const editingIndex = ref(-1)
+const showBuiltinModal = ref(false)
 
 function openAddModal() {
   editingIndex.value = -1
@@ -795,6 +797,14 @@ onUnmounted(() => {
               <line x1="5" y1="12" x2="19" y2="12"/>
             </svg>
           </button>
+          <button class="icon-btn fab-item" title="内置导航" @click="runFabAction(() => { showBuiltinModal = true })">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="3" y="3" width="7" height="7" rx="1.5"/>
+              <rect x="14" y="3" width="7" height="7" rx="1.5"/>
+              <rect x="3" y="14" width="7" height="7" rx="1.5"/>
+              <rect x="14" y="14" width="7" height="7" rx="1.5"/>
+            </svg>
+          </button>
           <button class="icon-btn fab-item" title="设置" @click="runFabAction(() => { showSettingsModal = true })">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="3"/>
@@ -876,6 +886,14 @@ onUnmounted(() => {
     :edit-index="editingIndex"
     @close="closeEditModal"
     @saved="saveConfig"
+  />
+
+  <BuiltinModal
+    v-if="config"
+    :visible="showBuiltinModal"
+    :services="config.services"
+    @close="showBuiltinModal = false"
+    @added="saveConfig"
   />
 
   <SettingsModal
