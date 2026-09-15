@@ -16,7 +16,8 @@
     "mock:resend": "node scripts/mock-resend.mjs",
     "test:disable": "node scripts/test-admin.mjs",
     "mock:imgbed": "node scripts/mock-imgbed.mjs",
-    "test:upload": "node scripts/test-upload.mjs"
+    "test:upload": "node scripts/test-upload.mjs",
+    "test:meta": "node scripts/test-meta.mjs"
   },
   "dependencies": {
     "cropperjs": "^2.1.1",

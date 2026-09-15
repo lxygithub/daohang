@@ -228,6 +228,7 @@ function handleTouchEnd() {
           v-if="service.iconType === 'url' && service.icon"
           :src="service.icon"
           :alt="service.name"
+          referrerpolicy="no-referrer"
         >
         <span v-if="isTextIcon" class="card-icon-text">{{ textChar }}</span>
       </div>

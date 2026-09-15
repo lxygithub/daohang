@@ -2,6 +2,13 @@
 import { ref, watch, computed, inject } from 'vue'
 import ImageCropper from './ImageCropper.vue'
 import { probeImageBed, uploadImage } from '../composables/sync'
+import {
+  normalizeSiteUrl,
+  isPrivateHost,
+  lanAutoFill,
+  publicFallbackIcon,
+  mixedContentBlocked,
+} from '../utils/siteMeta'
 
 const props = defineProps({
   visible: Boolean,
@@ -88,20 +95,32 @@ async function fetchFavicon() {
 }
 
 // 自动获取：标题 + 图标一次拿齐（silent=true 时由防抖触发，不弹提示）
+// - 内网地址：Cloudflare 边缘无法访问 → 浏览器直连探测（lanAutoFill）
+// - 公网地址：先走 /api/meta，失败后浏览器二次兜底（publicFallbackIcon）
 async function autoFetch(silent = false) {
-  const u = url.value.trim()
-  if (!u || !parseDomain(u)) {
+  const normalized = normalizeSiteUrl(url.value.trim())
+  if (!normalized) {
     if (!silent) showToast('请先填写正确的链接')
     return
   }
-  const normalized = u.includes('://') ? u : 'https://' + u
   fetchingFavicon.value = true
+  let lan = false
   try {
     const ctrl = new AbortController()
-    const timer = setTimeout(() => ctrl.abort(), 12000)
-    const res = await fetch(`/api/meta?url=${encodeURIComponent(normalized)}`, { signal: ctrl.signal })
+    const timer = setTimeout(() => ctrl.abort(), 15000)
+    let data
+    lan = isPrivateHost(new URL(normalized).hostname)
+    if (lan) {
+      data = await lanAutoFill(normalized)
+    } else {
+      const res = await fetch(`/api/meta?url=${encodeURIComponent(normalized)}`, { signal: ctrl.signal })
+      data = await res.json()
+      if (!data.icon) {
+        const fb = await publicFallbackIcon(normalized)
+        if (fb) data.icon = fb
+      }
+    }
     clearTimeout(timer)
-    const data = await res.json()
 
     let got = false
     if (data.title && (!name.value.trim() || name.value === lastNameAuto)) {
@@ -115,10 +134,13 @@ async function autoFetch(silent = false) {
       got = true
     }
     if (!silent) {
-      showToast(got ? '已自动填充' : '未能获取，可手动填写')
+      if (got) showToast(lan ? '已自动填充（浏览器直连）' : '已自动填充')
+      else if (lan && mixedContentBlocked(normalized)) showToast('HTTPS 页面无法读取 HTTP 内网资源（浏览器拦截），建议手动上传图标')
+      else if (data.error) showToast(`未能获取（${data.error}），可手动填写`)
+      else showToast('未能获取，可手动填写')
     }
-  } catch {
-    if (!silent) showToast('获取失败，请手动填写')
+  } catch (e) {
+    if (!silent) showToast('获取失败：' + (e?.message || '请手动填写'))
   } finally {
     fetchingFavicon.value = false
   }
@@ -177,7 +199,9 @@ function onCropCancel() {
 
 function save() {
   const n = name.value.trim()
-  const u = url.value.trim()
+  // 保存时规范化：裸地址补协议（内网 http://，公网 https://），保证卡片链接可点开
+  const rawUrl = url.value.trim()
+  const u = normalizeSiteUrl(rawUrl) || rawUrl
   const iu = iconUrl.value.trim()
 
   if (!n || !u) {
@@ -265,7 +289,7 @@ function handleOverlayClick(e) {
         <div class="custom-icon-panel">
           <button class="btn-text upload-btn" @click="pickFile">上传图标</button>
           <input type="text" class="form-input" v-model="iconUrl" placeholder="或输入图片 URL">
-          <img v-if="faviconPreview" :src="faviconPreview" class="favicon-preview" @error="faviconPreview = ''">
+          <img v-if="faviconPreview" :src="faviconPreview" class="favicon-preview" referrerpolicy="no-referrer" @error="faviconPreview = ''">
         </div>
       </div>
       <div class="modal-footer">

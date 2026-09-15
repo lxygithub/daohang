@@ -637,7 +637,7 @@ onUnmounted(() => {
       <form v-if="!searchPrefs.hidden" autocomplete="off" class="search-box" @submit.prevent>
         <div v-if="!searchPrefs.hideCategory" class="engine-anchor">
           <button type="button" class="engine-btn" :title="`搜索引擎：${engine.name}`" @click.stop="showEngineMenu = !showEngineMenu">
-            <img v-if="engine.icon" class="engine-icon" :src="engine.icon" alt="" @error="e => e.target.style.display = 'none'">
+            <img v-if="engine.icon" class="engine-icon" :src="engine.icon" alt="" referrerpolicy="no-referrer" @error="e => e.target.style.display = 'none'">
             <span v-else class="engine-dot"></span>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="6 9 12 15 18 9"/>
@@ -655,7 +655,7 @@ onUnmounted(() => {
                   :title="e.name"
                   @click="selectEngine(e.id)"
                 >
-                  <img v-if="e.icon" :src="e.icon" alt="" @error="e2 => e2.target.replaceWith(Object.assign(document.createElement('span'), { className: 'engine-fallback', textContent: e.name.charAt(0) }))">
+                  <img v-if="e.icon" :src="e.icon" alt="" referrerpolicy="no-referrer" @error="e2 => e2.target.replaceWith(Object.assign(document.createElement('span'), { className: 'engine-fallback', textContent: e.name.charAt(0) }))">
                   <span v-else class="engine-fallback">{{ e.name.charAt(0) }}</span>
                   <svg v-if="e.id === engineId" class="engine-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
                     <polyline points="20 6 9 17 4 12"/>

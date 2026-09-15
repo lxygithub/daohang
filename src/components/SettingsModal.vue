@@ -781,7 +781,7 @@ function pickImport() {
         <label>自定义搜索引擎 <span class="label-hint">（搜索链接中用 {q} 表示关键词）</span></label>
         <div class="engine-manager">
           <div v-for="e in customEngines" :key="e.id" class="engine-row">
-            <img v-if="e.icon" :src="e.icon" alt="" class="engine-ico" @error="e2 => e2.target.style.visibility = 'hidden'">
+            <img v-if="e.icon" :src="e.icon" alt="" class="engine-ico" referrerpolicy="no-referrer" @error="e2 => e2.target.style.visibility = 'hidden'">
             <span v-else class="engine-ico fallback">{{ e.name.charAt(0) }}</span>
             <div class="engine-info">
               <div class="engine-name">{{ e.name }}</div>
