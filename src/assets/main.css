@@ -2163,7 +2163,9 @@ html[data-theme="light"] .auth-notice { color: #1e7e4d; background: rgba(30, 158
 }
 .admin-tr {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 76px 44px 44px auto;
+  /* 操作列必须固定宽：每个 .admin-tr 是独立 grid 容器，
+     auto 会按各行内容（按钮数不同）独立伸缩，导致列错位 */
+  grid-template-columns: minmax(0, 1fr) 76px 44px 44px 176px;
   gap: 8px;
   align-items: center;
   padding: 9px 12px;
@@ -2176,6 +2178,7 @@ html[data-theme="light"] .auth-notice { color: #1e7e4d; background: rgba(30, 158
   color: var(--text-3);
   font-weight: 600;
 }
+.admin-tr.admin-head span:last-child { text-align: right; } /* 与右对齐的按钮组对齐 */
 html[data-theme="light"] .admin-tr.admin-head { background: rgba(0, 0, 0, 0.035); }
 .admin-tr .num { text-align: center; font-variant-numeric: tabular-nums; color: var(--text-2); }
 .admin-email {
@@ -2288,7 +2291,7 @@ html[data-theme="light"] .admin-op.warn:hover:not(:disabled) { background: rgba(
 
 @media (max-width: 640px) {
   .admin-modal { max-width: 100%; }
-  .admin-tr { grid-template-columns: minmax(0, 1fr) 44px auto; }
+  .admin-tr { grid-template-columns: minmax(0, 1fr) 152px; }
   .admin-tr > .admin-date, .admin-tr > .num { display: none; }
   .admin-op { padding: 4px 7px; font-size: 0.68rem; }
 }

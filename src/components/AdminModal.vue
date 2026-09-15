@@ -159,7 +159,7 @@ function fmtDate(iso) {
 
         <div class="admin-table" role="table">
           <div class="admin-tr admin-head" role="row">
-            <span>用户</span><span>注册</span><span class="num">会话</span><span class="num">偏好</span><span>操作</span>
+            <span>用户</span><span class="admin-date">注册</span><span class="num">会话</span><span class="num">偏好</span><span>操作</span>
           </div>
 
           <div v-if="loading && !users.length" class="admin-empty">加载中…</div>
