@@ -114,5 +114,25 @@ ok(prefs.status === 200 && Object.keys(pd.data || {}).length === 0, 'cloud prefs
 const cleanup = await call('DELETE', '/api/user/account', { currentPassword: P1 }, C)
 ok(cleanup.status === 200, 'cleanup re-created account')
 
+// 16. 管理员账号禁止注销（ADMIN_EMAIL 由启动 wrangler 时 --var 注入，随机邮箱保证可注册）
+const adminEmail = process.env.ADMIN_EMAIL || '594328762@qq.com'
+const AP = 'adminPass123'
+const AJ = jar()
+const aReg = await call('POST', '/api/auth/register', { email: adminEmail, password: AP }, AJ)
+if (aReg.status === 200) {
+  ok((await aReg.json()).isAdmin === true, 'admin register carries isAdmin flag')
+} else {
+  // 邮箱已被注册（如默认管理员此前已入本地库）→ 改用登录取得会话
+  const aLogin = await call('POST', '/api/auth/login', { email: adminEmail, password: AP }, AJ)
+  ok(aLogin.status === 200, `admin login fallback (got ${aLogin.status})`)
+}
+const aMe = await call('GET', '/api/auth/me', null, AJ)
+ok(aMe.status === 200 && (await aMe.json()).isAdmin === true, 'admin session flagged isAdmin')
+const aDel = await call('DELETE', '/api/user/account', { currentPassword: AP }, AJ)
+ok(aDel.status === 403, `admin delete self → 403 (got ${aDel.status})`)
+ok((await aDel.json()).error === '管理员账号不可注销', 'admin delete rejected with explicit error')
+const aMe2 = await call('GET', '/api/auth/me', null, AJ)
+ok(aMe2.status === 200, 'admin session survives delete attempt')
+
 console.log(`\n${pass} passed, ${fail} failed`)
 process.exit(fail ? 1 : 0)

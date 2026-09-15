@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
-import { userEmail, changePassword, deleteAccount } from '../composables/sync'
+import { userEmail, isAdmin, changePassword, deleteAccount } from '../composables/sync'
 
 const props = defineProps({ visible: Boolean })
 const emit = defineEmits(['close', 'deleted'])
@@ -110,8 +110,8 @@ watch(() => props.visible, v => {
           </form>
         </section>
 
-        <!-- 注销账号 -->
-        <section class="acct-section acct-danger">
+        <!-- 注销账号（管理员账号不可注销，不展示入口） -->
+        <section v-if="!isAdmin" class="acct-section acct-danger">
           <h3 class="acct-title danger">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="3 6 5 6 21 6"/>
