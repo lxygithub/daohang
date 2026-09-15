@@ -19,6 +19,19 @@ const list0 = delta ? sites.filter(s => s.icon.includes('/file/builtin-icons/'))
 const list = limit ? list0.slice(0, limit) : list0
 console.log(`导入 ${list.length}/${sites.length} 条${delta ? '（差量：仅图床图标行）' : ''} → ${BASE}`)
 
+// ── 写额度护栏 ──────────────────────────────────────────────
+// D1 免费档每日 10 万行写入（UTC 零点重置 = 北京时间早 8 点）。行写入估算：
+//   站点 upsert 1 行/站；分类先清后插 ≈ 2 行/站（首次导入免删 ≈ 1 行/站），取 3 行/站留余量。
+// 估算 > 5 万行时拒绝执行，需显式 --force——防止重蹈 09-15 一天打满全日额度的覆辙。
+const EST_PER_SITE = 3
+const est = list.length * EST_PER_SITE
+if (est > 50000 && !process.argv.includes('--force')) {
+  console.error(`⛔ 预计行写入 ≈ ${est.toLocaleString()}（${list.length} 站 × ${EST_PER_SITE}）> 50,000，已拒绝执行。`)
+  console.error('   D1 免费档每日仅 10 万行写入；当天若已跑过导入/测试，再跑大概率打满额度，写功能全挂到次日 UTC 零点。')
+  console.error(`   确认额度充足后，加 --force 重跑：node scripts/import-builtin.mjs --force${delta ? ' --delta' : ''}${limit ? ` --limit=${limit}` : ''}`)
+  process.exit(1)
+}
+
 const CHUNK = 150
 let done = 0, okN = 0, fail = 0
 const started = Date.now()
