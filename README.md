@@ -10,7 +10,7 @@
 
 - 图标 / 卡片 / 列表三种布局，手机式分页网格；拼音声母分组字母视图
 - 拖拽排序（含跨组）、分组折叠、按使用频率自动排序
-- 粘贴链接自动抓取标题与 favicon；图标支持上传 / URL（可配置自建图床，上传自动转外链而非 base64 内联）；长按（移动端）或右键（桌面）进编辑模式
+- 粘贴链接自动抓取标题与 favicon；图标支持上传 / URL（可配置自建图床，图标与壁纸上传自动转外链而非 base64 内联，存量内联资源可在设置里一键转存）；长按（移动端）或右键（桌面）进编辑模式
 - 搜索：本地过滤与建议、多引擎切换（本地/百度/必应/Google/Yahoo/Yandex）、自定义 `{q}` 占位引擎、新标签直达
 
 ### 个性化
@@ -87,7 +87,7 @@ npm run test:auth          # 注册/登录/会话/限流（16 项）
 npm run test:account       # 改密/注销（21 项）
 npm run test:admin         # 管理员 + 找回密码（30 项）
 npm run test:disable       # 用户搜索 + 禁用/启用（20 项）
-npm run test:upload        # 自建图床上传代理（10 项，需 mock:imgbed）
+npm run test:upload        # 自建图床上传代理（12 项含鉴权转发，需 mock:imgbed）
 ```
 
 限流为 isolate 内存实现，多套测试连跑会触发 429，跑之前重启 wrangler 即可隔离。
@@ -125,6 +125,6 @@ npm run db:migrate    # 手动执行 d1/ 迁移（通常不需要，ensureSchema
 | `ADMIN_PASSWORD` | 仪表板加密机密 | 管理密码；或用 `ADMIN_PASSWORD_SHA256` |
 | `BREVO_API_KEY` | 仪表板加密机密 | Brevo 发信 API key |
 | `RESEND_API_KEY` | 仪表板加密机密 | 可选，Resend 备用通道 |
-| `IMG_UPLOAD_API` | wrangler.toml `[vars]` | 可选，自建图床上传接口；配置后图标上传自动转外链（详见 DEPLOY.md） |
+| `IMG_UPLOAD_API` | wrangler.toml `[vars]` | 可选，自建图床上传接口；配置后图标/壁纸上传自动转外链，设置内可一键转存存量 base64（详见 DEPLOY.md） |
 
 完整部署步骤、变量管理规则与常见问题见 [DEPLOY.md](DEPLOY.md)，D1 细节见 [D1_SETUP.md](D1_SETUP.md)。

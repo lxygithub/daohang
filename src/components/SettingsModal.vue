@@ -8,6 +8,7 @@ import {
   loadSearch, saveSearch, applySearch,
   loadHero, saveHero, applyHero,
 } from '../composables/usePrefs'
+import { probeImageBed, uploadImage, authed } from '../composables/sync'
 
 const props = defineProps({
   visible: Boolean,
@@ -28,6 +29,11 @@ const grid = ref(loadGrid())
 const font = ref(loadFont())
 const wallpaperUrl = ref('')
 const wpBlur = ref(0)
+// ---- 图床：上传走服务端代理换外链（未配置/失败自动回退 base64 内联） ----
+const imgbedEnabled = ref(false)
+const wpUploading = ref(false)
+const migrating = ref(false)
+const migrateProgress = ref('')
 
 // 图标大小滑条以百分比展示：10% = 48px，100% = 500px
 const sizePct = computed(() => pxToPct(grid.value.size))
@@ -174,6 +180,7 @@ function applySolid() {
 
 watch(() => props.visible, (val) => {
   if (!val) return
+  probeImageBed().then(v => { imgbedEnabled.value = v })
   if (props.background?.value) {
     // 回填当前背景：若为双色线性渐变则解析到编辑器
     const m = String(props.background.value).match(/^linear-gradient\((\d+)deg,\s*(#[0-9a-fA-F]{3,8})\s+0%,\s*(#[0-9a-fA-F]{3,8})/)
@@ -313,8 +320,8 @@ function pickWallpaper() {
     const reader = new FileReader()
     reader.onload = () => {
       const img = new Image()
-      img.onload = () => {
-        // 压缩到最长边 1440，减少 D1 存储体积
+      img.onload = async () => {
+        // 压缩到最长边 1440，控制存储与上传体积
         const MAX = 1440
         const scale = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight))
         const canvas = document.createElement('canvas')
@@ -322,7 +329,26 @@ function pickWallpaper() {
         canvas.height = Math.round(img.naturalHeight * scale)
         canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height)
         const dataUrl = canvas.toDataURL('image/jpeg', 0.72)
-        applyWallpaper(dataUrl, 'data')
+        // 未配置图床：沿用 base64 内联（原行为，无需登录）
+        if (!imgbedEnabled.value) { applyWallpaper(dataUrl, 'data'); return }
+        // 已配置图床：上传换外链，失败回退内联，绝不阻断
+        wpUploading.value = true
+        try {
+          const blob = await (await fetch(dataUrl)).blob()
+          const r = await uploadImage(new File([blob], 'wallpaper.jpg', { type: 'image/jpeg' }))
+          if (r.ok && r.url) {
+            applyWallpaper(r.url, 'url')
+            showToast('壁纸已上传图床')
+          } else {
+            applyWallpaper(dataUrl, 'data')
+            showToast((r.error || '图床上传失败') + '，已改用内联保存')
+          }
+        } catch {
+          applyWallpaper(dataUrl, 'data')
+          showToast('图床上传失败，已改用内联保存')
+        } finally {
+          wpUploading.value = false
+        }
       }
       img.onerror = () => showToast('图片读取失败')
       img.src = reader.result
@@ -330,6 +356,64 @@ function pickWallpaper() {
     reader.readAsDataURL(file)
   }
   input.click()
+}
+
+// ---- 存量 base64 一键转存图床（图标 + 壁纸） ----
+const inlineAssets = computed(() => {
+  const cfg = configRef?.value
+  if (!cfg) return { icons: [], wallpaper: null }
+  const icons = (cfg.services || []).filter(s => typeof s.icon === 'string' && s.icon.startsWith('data:'))
+  const wp = cfg.wallpaper
+  const wallpaper = wp && wp.type !== 'none' && typeof wp.value === 'string' && wp.value.startsWith('data:') ? wp : null
+  return { icons, wallpaper }
+})
+const inlineCount = computed(() => inlineAssets.value.icons.length + (inlineAssets.value.wallpaper ? 1 : 0))
+
+async function dataUrlToFile(dataUrl, name) {
+  const blob = await (await fetch(dataUrl)).blob()
+  const ext = blob.type === 'image/jpeg' ? 'jpg' : blob.type === 'image/webp' ? 'webp' : 'png'
+  return new File([blob], `${name}.${ext}`, { type: blob.type || 'image/png' })
+}
+
+async function migrateInlineAssets() {
+  if (migrating.value) return
+  const cfg = configRef?.value
+  if (!cfg) return
+  if (!authed.value) { showToast('请先注册并登录，再转存到图床'); return }
+  const { icons, wallpaper } = inlineAssets.value
+  const total = icons.length + (wallpaper ? 1 : 0)
+  if (!total) { showToast('没有内联保存的图标或壁纸'); return }
+  migrating.value = true
+  const seen = new Map() // 相同 base64 只上传一次
+  let done = 0, ok = 0, fail = 0
+  for (const s of icons) {
+    migrateProgress.value = `${done + 1} / ${total}`
+    try {
+      let url = seen.get(s.icon)
+      if (url === undefined) {
+        const r = await uploadImage(await dataUrlToFile(s.icon, 'icon-' + (s.id || done)))
+        url = r.ok && r.url ? r.url : null
+        if (url) seen.set(s.icon, url)
+      }
+      if (url) { s.icon = url; ok++ } else fail++
+    } catch { fail++ }
+    done++
+  }
+  if (wallpaper) {
+    migrateProgress.value = `${done + 1} / ${total}`
+    try {
+      const r = await uploadImage(await dataUrlToFile(wallpaper.value, 'wallpaper'))
+      if (r.ok && r.url) { cfg.wallpaper = { type: 'url', value: r.url }; ok++ } else fail++
+    } catch { fail++ }
+    done++
+  }
+  if (ok) {
+    saveConfig()
+    window.dispatchEvent(new CustomEvent('apply-background'))
+  }
+  migrating.value = false
+  migrateProgress.value = ''
+  showToast(`转存完成：${ok} 项成功${fail ? `，${fail} 项失败（保留内联）` : ''}`)
 }
 
 // ---- 回收站 ----
@@ -727,7 +811,7 @@ function pickImport() {
         </div>
         <div class="backup-row" style="margin-top:10px">
           <button class="btn-text ghost" :class="{ loading: wpLoading }" :disabled="wpLoading" @click="randomWallpaper">{{ wpLoading ? '获取中…' : '随机壁纸' }}</button>
-          <button class="btn-text ghost" @click="pickWallpaper">上传图片</button>
+          <button class="btn-text ghost" :disabled="wpUploading" @click="pickWallpaper">{{ wpUploading ? '上传中…' : '上传图片' }}</button>
           <button class="btn-text ghost" @click="clearWallpaper">清除壁纸</button>
         </div>
         <div v-if="hasWallpaper" class="grid-setting">
@@ -737,7 +821,17 @@ function pickImport() {
             <b>{{ wpBlur }}px</b>
           </label>
         </div>
-        <p class="settings-hint">上传自动压缩至 1440px；启用壁纸后极光背景会淡出</p>
+        <p class="settings-hint">上传自动压缩至 1440px{{ imgbedEnabled ? '，并转存图床换外链' : '，以 base64 内联保存' }}；启用壁纸后极光背景会淡出</p>
+      </div>
+
+      <div v-if="imgbedEnabled && inlineCount" class="form-group">
+        <label>图床转存</label>
+        <div class="backup-row">
+          <button class="btn-text ghost" :disabled="migrating" @click="migrateInlineAssets">
+            {{ migrating ? `转存中 ${migrateProgress}…` : `一键转存 ${inlineCount} 项内联资源` }}
+          </button>
+        </div>
+        <p class="settings-hint">把内联（base64）保存的图标{{ inlineAssets.wallpaper ? '与壁纸' : '' }}上传图床替换为外链，配置体积大幅瘦身；失败项自动保留内联</p>
       </div>
 
       <div class="form-group">
