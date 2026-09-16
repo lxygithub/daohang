@@ -50,7 +50,7 @@ async function fetchOne(src) {
     const ext = (ct.split('/')[1] || 'png').split(';')[0].replace('jpeg', 'jpg').replace(/[^a-z0-9]/g, '') || 'png'
     const hash = crypto.createHash('sha1').update(Buffer.from(buf)).digest('hex')
     const fp = path.join(OUT_DIR, `${hash}.${ext}`)
-    if (!fs.existsSync(fp)) fs.writeFileSync(fp, buf)
+    if (!fs.existsSync(fp)) fs.writeFileSync(fp, Buffer.from(buf))
     return { h: hash, e: ext }
   } catch (e) {
     return { err: e.name === 'AbortError' ? '下载超时' : (e.message || '下载失败') }
