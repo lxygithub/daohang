@@ -47,7 +47,9 @@ async function rateGate() {
 }
 function noteBedError(status) {
   consecBedFails++
-  const ms = Math.min(30000, 2000 * 2 ** Math.min(consecBedFails - 1, 4))
+  // 前 5 次指数退避（2→30s）；仍不见好说明是持续故障（TG flood-wait 窗口），
+  // 升级为每次 2 分钟长冷却——宁可慢，不可硬怼（硬怼只会烧队列+堆孤儿文件）
+  const ms = consecBedFails <= 5 ? Math.min(30000, 2000 * 2 ** (consecBedFails - 1)) : 120000
   cooldownUntil = Math.max(cooldownUntil, Date.now() + ms)
   console.warn(`⚠ 图床限流信号 ${status}：全员冷却 ${(cooldownUntil - Date.now()) / 1000 | 0}s（连续错误 ${consecBedFails}）`)
 }
@@ -171,6 +173,9 @@ async function upload(args) {
       const src = queue[idx++]
       let rec = null
       for (let attempt = 0; attempt < 5 && !rec?.url; attempt++) {
+        // 熔断期（连续 ≥6 次图床错误）：本次尝试前再等 2 分钟，
+        // 让 5 次尝试摊到 ~10 分钟跨度上，等图床恢复而不是白白耗尽重试
+        if (consecBedFails >= 6) await sleep(Math.max(0, cooldownUntil - Date.now()))
         const f = await getContent(src, srcMap)
         if (f.err) { rec = { src, ok: false, err: f.err }; if (attempt < 4) { await sleep(2000 * (attempt + 1)); continue } break }
         const known = hashIndex.get(f.hash)
