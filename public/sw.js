@@ -2,8 +2,8 @@
 // - hashed /assets/: cache-first
 // - navigation & static files: network-first with cache fallback (offline support)
 // - /api/: always network (never cached)
-const CACHE = 'daohang-v1'
-const PRECACHE = ['/', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png']
+const CACHE = 'daohang-v2'
+const PRECACHE = ['/', '/manifest.webmanifest', '/icon.svg', '/icon-192.png', '/icon-512.png']
 
 self.addEventListener('install', (e) => {
   e.waitUntil(

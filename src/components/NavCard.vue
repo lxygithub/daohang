@@ -156,6 +156,7 @@ function handleTouchStart(e) {
     pressTimer = setTimeout(() => {
       touchDrag = { el, over: null }
       el.classList.add('touch-dragging')
+      window.dispatchEvent(new CustomEvent('touch-reorder-start'))
       if (navigator.vibrate) navigator.vibrate(15)
     }, 200)
   } else {
@@ -174,6 +175,7 @@ function handleTouchMove(e) {
   }
   // 拖拽激活后阻止页面滚动
   e.preventDefault()
+  e.stopPropagation()
   const t = e.touches[0]
   const target = document.elementFromPoint(t.clientX, t.clientY)?.closest('.card')
   document.querySelectorAll('.card.touch-over').forEach(c => c.classList.remove('touch-over'))
@@ -183,22 +185,28 @@ function handleTouchMove(e) {
   } else {
     touchDrag.over = null
   }
+  window.dispatchEvent(new CustomEvent('touch-reorder-move', {
+    detail: { x: t.clientX, y: t.clientY },
+  }))
 }
 
-function handleTouchEnd() {
+function handleTouchEnd(e) {
   clearTimeout(pressTimer)
   pressStart = null
   if (touchDrag) {
+    e.stopPropagation()
     touchDrag.el.classList.remove('touch-dragging')
     const over = touchDrag.over
-    if (over) {
-      over.classList.remove('touch-over')
-      const srcIndex = props.index
-      const targetIndex = Number(over.dataset.index)
-      if (srcIndex !== targetIndex && !Number.isNaN(targetIndex)) {
-        window.dispatchEvent(new CustomEvent('drop-reorder', { detail: { srcIndex, targetIndex } }))
-      }
-    }
+    if (over) over.classList.remove('touch-over')
+    const t = e.changedTouches?.[0]
+    window.dispatchEvent(new CustomEvent('touch-reorder-drop', {
+      detail: {
+        srcIndex: props.index,
+        targetIndex: over ? Number(over.dataset.index) : null,
+        x: t?.clientX,
+        y: t?.clientY,
+      },
+    }))
   }
   touchDrag = null
 }

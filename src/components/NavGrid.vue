@@ -178,6 +178,7 @@ function handlePagerTouchEnd(e) {
 // 起点 .card 上不接管——卡片自带 HTML5 拖拽排序；圆点等 button 也跳过
 const dragDx = ref(0)      // 拖动进行中的横向位移（px，跟手预览）
 const dragging = ref(false)
+const pagerWrap = ref(null)
 let mdrag = null
 
 function handlePagerMouseDown(e) {
@@ -284,11 +285,19 @@ function handlePagerDragOver(e) {
   // 始终 preventDefault：空白处也要能落点，否则只有卡片是合法投放目标
   e.preventDefault()
   e.dataTransfer.dropEffect = 'move'
+  handlePagerDragAt(e.clientX, e.clientY)
+}
+
+function handlePagerDragAt(clientX, clientY) {
   if (pages.value.length < 2) return
-  const r = e.currentTarget.getBoundingClientRect()
+  const r = pagerWrap.value?.getBoundingClientRect()
+  if (!r || clientX < r.left || clientX > r.right || clientY < r.top || clientY > r.bottom) {
+    clearFlipArm()
+    return
+  }
   const last = pages.value.length - 1
-  if (e.clientX - r.left < EDGE_ZONE && page.value > 0) armFlip('prev')
-  else if (r.right - e.clientX < EDGE_ZONE && page.value < last) armFlip('next')
+  if (clientX - r.left < EDGE_ZONE && page.value > 0) armFlip('prev')
+  else if (r.right - clientX < EDGE_ZONE && page.value < last) armFlip('next')
   else clearFlipArm()
 }
 
@@ -308,14 +317,52 @@ function handlePagerDrop(e) {
   if (e.target.closest?.('.card')) return   // 落在卡片上：交给 NavCard 处理（drop 冒泡到此）
   const raw = e.dataTransfer.getData('text/plain')
   if (!/^\d+$/.test(raw)) return          // 外部拖入的文本/文件不是本次排序
-  const srcIndex = Number(raw)
-  const pi = Number(e.target.closest?.('.pager-page')?.dataset.page)
+  reorderOnPagerBlank(Number(raw), e.target.closest?.('.pager-page'))
+}
+
+function reorderOnPagerBlank(srcIndex, pageEl) {
+  const pi = Number(pageEl?.dataset.page)
   if (!Number.isInteger(pi)) return
   const pg = pages.value[pi]
-  if (!pg || !pg.length) return
-  const targetIndex = pg[0]._index
+  if (!pg) return
+  // 空白页没有卡片可作为 drop target，末页则直接追加到列表尾。
+  const targetIndex = pg.length ? pg[0]._index : props.services.length
   if (srcIndex === targetIndex) return
   window.dispatchEvent(new CustomEvent('drop-reorder', { detail: { srcIndex, targetIndex } }))
+}
+
+// 手机端使用自定义长按拖动，原先只会命中当前页的卡片。
+// NavCard 把手指坐标交给此处，复用桌面端的边缘翻页，并支持投放到新页空白处。
+function handleTouchReorderMove(e) {
+  const { x, y } = e.detail || {}
+  if (Number.isFinite(x) && Number.isFinite(y)) handlePagerDragAt(x, y)
+}
+
+function handleTouchReorderStart() {
+  // 长按拖拽不能在松手时又被当成普通侧滑。
+  swipe = null
+}
+
+function handleTouchReorderDrop(e) {
+  clearFlipArm()
+  const { srcIndex, targetIndex: savedTargetIndex, x, y } = e.detail || {}
+  if (!Number.isInteger(srcIndex)) return
+  const target = Number.isFinite(x) && Number.isFinite(y)
+    ? document.elementFromPoint(x, y)
+    : null
+  const card = target?.closest?.('.card')
+  if (card) {
+    const targetIndex = Number(card.dataset.index)
+    if (Number.isInteger(targetIndex) && targetIndex !== srcIndex) {
+      window.dispatchEvent(new CustomEvent('drop-reorder', { detail: { srcIndex, targetIndex } }))
+    }
+    return
+  }
+  if (Number.isInteger(savedTargetIndex) && savedTargetIndex !== srcIndex) {
+    window.dispatchEvent(new CustomEvent('drop-reorder', { detail: { srcIndex, targetIndex: savedTargetIndex } }))
+    return
+  }
+  reorderOnPagerBlank(srcIndex, target?.closest?.('.pager-page'))
 }
 
 // ---- actions ----
@@ -395,6 +442,9 @@ function handleDeleteService(e) {
 onMounted(() => {
   window.addEventListener('blur', handlePagerDragAbort)
   window.addEventListener('drop-reorder', handleDropReorder)
+  window.addEventListener('touch-reorder-start', handleTouchReorderStart)
+  window.addEventListener('touch-reorder-move', handleTouchReorderMove)
+  window.addEventListener('touch-reorder-drop', handleTouchReorderDrop)
   window.addEventListener('delete-service', handleDeleteService)
   window.addEventListener('open-first-match', handleOpenFirstMatch)
   window.addEventListener('usage-sort-changed', handleUsageSortChanged)
@@ -406,6 +456,9 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('blur', handlePagerDragAbort)
   window.removeEventListener('drop-reorder', handleDropReorder)
+  window.removeEventListener('touch-reorder-start', handleTouchReorderStart)
+  window.removeEventListener('touch-reorder-move', handleTouchReorderMove)
+  window.removeEventListener('touch-reorder-drop', handleTouchReorderDrop)
   window.removeEventListener('delete-service', handleDeleteService)
   window.removeEventListener('open-first-match', handleOpenFirstMatch)
   window.removeEventListener('usage-sort-changed', handleUsageSortChanged)
@@ -427,6 +480,7 @@ onUnmounted(() => {
   <!-- 手机屏幕式分页（phone 布局 + 网格视图 + 未搜索 + 无分组） -->
   <div
     v-else-if="pagerOn"
+    ref="pagerWrap"
     class="pager-wrap"
     :style="gridVars"
     @mousedown="handlePagerMouseDown"
