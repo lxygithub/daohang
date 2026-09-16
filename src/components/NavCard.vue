@@ -102,11 +102,13 @@ function handleDragStart(e) {
   e.dataTransfer.setData('text/plain', String(props.index))
   e.dataTransfer.effectAllowed = 'move'
   e.target.classList.add('dragging')
+  window.dispatchEvent(new CustomEvent('reorder-drag-start', { detail: { index: props.index } }))
 }
 
 function handleDragEnd(e) {
   e.target.classList.remove('dragging')
   document.querySelectorAll('.card').forEach(c => c.classList.remove('drag-over'))
+  window.dispatchEvent(new CustomEvent('reorder-drag-end'))
 }
 
 function handleDragOver(e) {

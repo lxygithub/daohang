@@ -254,11 +254,12 @@ function handlePagerWheel(e) {
 // ---- 拖拽排序时拖到左右边缘自动翻页 ----
 // HTML5 拖拽悬停在屏幕外的页上不会触发 dragover（被 overflow:hidden 裁掉），
 // 所以必须靠边缘侦测主动翻页，否则图标永远拖不到下一页。
-const EDGE_ZONE = 78     // 距边缘多少 px 内触发
-const FLIP_DELAY = 620   // 悬停多久翻页（ms）
+const EDGE_ZONE = 112    // 距边缘多少 px 内触发
+const FLIP_DELAY = 360   // 悬停多久翻页（ms）
 const flipHint = ref('') // '' | 'prev' | 'next' —— 只作视觉提示
 let flipTimer = null
 let flipDir = ''
+let activeReorderDrag = null
 
 function clearFlipArm() {
   clearTimeout(flipTimer)
@@ -299,6 +300,24 @@ function handlePagerDragAt(clientX, clientY) {
   if (clientX - r.left < EDGE_ZONE && page.value > 0) armFlip('prev')
   else if (r.right - clientX < EDGE_ZONE && page.value < last) armFlip('next')
   else clearFlipArm()
+}
+
+// 不把自动翻页绑死在 .pager-wrap：浏览器原生拖拽经过卡片、空白区
+// 或 overflow 裁剪边缘时，目标元素收到 dragover 的方式并不一致。
+// 只要本次拖拽由导航卡片发起，就从 window 收集坐标，翻页不会丢失。
+function handleReorderDragStart(e) {
+  const index = e.detail?.index
+  activeReorderDrag = Number.isInteger(index) ? index : null
+}
+
+function handleReorderDragOver(e) {
+  if (activeReorderDrag === null) return
+  handlePagerDragAt(e.clientX, e.clientY)
+}
+
+function handleReorderDragEnd() {
+  activeReorderDrag = null
+  clearFlipArm()
 }
 
 function handlePagerDragLeave(e) {
@@ -441,6 +460,9 @@ function handleDeleteService(e) {
 
 onMounted(() => {
   window.addEventListener('blur', handlePagerDragAbort)
+  window.addEventListener('dragover', handleReorderDragOver)
+  window.addEventListener('reorder-drag-start', handleReorderDragStart)
+  window.addEventListener('reorder-drag-end', handleReorderDragEnd)
   window.addEventListener('drop-reorder', handleDropReorder)
   window.addEventListener('touch-reorder-start', handleTouchReorderStart)
   window.addEventListener('touch-reorder-move', handleTouchReorderMove)
@@ -455,6 +477,9 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('blur', handlePagerDragAbort)
+  window.removeEventListener('dragover', handleReorderDragOver)
+  window.removeEventListener('reorder-drag-start', handleReorderDragStart)
+  window.removeEventListener('reorder-drag-end', handleReorderDragEnd)
   window.removeEventListener('drop-reorder', handleDropReorder)
   window.removeEventListener('touch-reorder-start', handleTouchReorderStart)
   window.removeEventListener('touch-reorder-move', handleTouchReorderMove)
