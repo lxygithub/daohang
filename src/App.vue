@@ -1,6 +1,6 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted, provide } from 'vue'
-import { useConfig, getStoredPassword, AUTH_KEY } from './composables/useConfig'
+import { ref, computed, onMounted, onUnmounted, provide, watch } from 'vue'
+import { useConfig } from './composables/useConfig'
 import { useToast } from './composables/useToast'
 import {
   loadView, saveView, emitView, applyFont,
@@ -14,19 +14,27 @@ import EditModal from './components/EditModal.vue'
 import BuiltinModal from './components/BuiltinModal.vue'
 import SearchModal from './components/SearchModal.vue'
 import SettingsModal from './components/SettingsModal.vue'
-import PasswordModal from './components/PasswordModal.vue'
 import AuthModal from './components/AuthModal.vue'
 import AccountModal from './components/AccountModal.vue'
 import AdminModal from './components/AdminModal.vue'
 import Toast from './components/Toast.vue'
 import {
   authed, userEmail, isAdmin, checkAuth, pullAndMerge, logout as syncLogout,
-  bindPrefEvents, noteConfigSynced,
+  bindPrefEvents,
 } from './composables/sync'
 const buildTime = __BUILD_TIME__
 
 const { config, loading, loadConfig, saveConfig } = useConfig()
 const { message: toastMessage, visible: toastVisible, showToast } = useToast()
+
+watch(authed, loggedIn => {
+  if (loggedIn) return
+  config.value = null
+  editMode.value = false
+  userMenuOpen.value = false
+  applyBackground()
+  if (!loading.value) showAuthModal.value = true
+})
 
 const searchQuery = ref('')
 const searchInputRef = ref(null)
@@ -341,36 +349,13 @@ function handleDocClick(e) {
   editMode.value = false
 }
 
-// Password verification
-const verified = ref(false)
-const showPasswordModal = ref(false)
-const pendingAction = ref(null)
-
 function ensureVerified(callback) {
-  // 登录用户免密（账号即凭证），访客保留管理密码流程
-  if (verified.value || authed.value) {
+  if (authed.value) {
     callback()
     return
   }
-  pendingAction.value = callback
-  showPasswordModal.value = true
-}
-
-function onPasswordVerified(password) {
-  verified.value = true
-  showPasswordModal.value = false
-  if (password) {
-    try { sessionStorage.setItem(AUTH_KEY, btoa(password)) } catch {}
-  }
-  if (pendingAction.value) {
-    pendingAction.value()
-    pendingAction.value = null
-  }
-}
-
-function onPasswordCancel() {
-  showPasswordModal.value = false
-  pendingAction.value = null
+  showToast('请先登录')
+  showAuthModal.value = true
 }
 
 // Edit modal
@@ -405,18 +390,20 @@ const showAdminModal = ref(false)
 const userMenuOpen = ref(false)
 const syncingNow = ref(false)
 
-function onAuthed(mail, mode) {
-  showToast(mode === 'register' ? '注册成功，正在同步偏好…' : '登录成功，正在同步偏好…')
-  pullAndMerge()
+async function onAuthed(mail, mode) {
+  showToast(mode === 'register' ? '注册成功，正在获取云端数据…' : '登录成功，正在获取云端数据…')
+  await pullAndMerge()
+  const loaded = await loadConfig()
+  if (loaded) applyBackground()
+  else showAuthModal.value = true
 }
 
 async function doLogout() {
   userMenuOpen.value = false
   await syncLogout()
   showToast('已退出登录')
-  // 回到访客视角：重新拉取全局默认配置
-  await loadConfig()
-  applyBackground()
+  config.value = null
+  showAuthModal.value = true
 }
 
 function openAccount() {
@@ -431,9 +418,8 @@ function openAdmin() {
 
 async function onAccountDeleted() {
   showToast('账号已注销，云端数据已清除')
-  // 回到访客视角（本机偏好保留）
-  await loadConfig()
-  applyBackground()
+  config.value = null
+  showAuthModal.value = true
 }
 
 async function syncNow() {
@@ -563,12 +549,6 @@ onMounted(async () => {
     if (allEngines.value.some(e => e.id === id)) engineId.value = id
     else reloadCustomEngines()
   })
-  window.addEventListener('server-config-changed', async () => {
-    await loadConfig()
-    applyBackground()
-  })
-  // 会话内记住验证状态，刷新无需重复输密码
-  if (getStoredPassword()) verified.value = true
   let savedLight = false
   try { savedLight = localStorage.getItem(THEME_KEY) === 'light' } catch {}
   applyTheme(savedLight)
@@ -580,12 +560,17 @@ onMounted(async () => {
     try { searchQuery.value = localStorage.getItem('nav_search_query') || '' } catch {}
   }
   fetchQuote()
-  await loadConfig()
-  applyBackground()
+  if (await checkAuth()) {
+    await pullAndMerge()
+    await loadConfig()
+    applyBackground()
+  } else {
+    config.value = null
+    loading.value = false
+    showAuthModal.value = true
+  }
   // 入场动画（含最长 0.5s stagger + 0.45s 动画本身）播完后再摘除 .app-boot
   setTimeout(() => { appBooted.value = true }, 1100)
-  // 会话仍有效时静默同步一次云端偏好
-  if (await checkAuth()) pullAndMerge()
 })
 
 let clockTimer = null
@@ -741,6 +726,10 @@ onUnmounted(() => {
     <div v-if="loading" class="state-wrap">
       <div class="spinner"></div>
       <div>正在加载…</div>
+    </div>
+    <div v-else-if="!authed" class="state-wrap">
+      <div>请登录后查看并同步你的导航数据</div>
+      <button type="button" class="btn-text primary" @click="showAuthModal = true">登录 / 注册</button>
     </div>
     <div v-else-if="!config" class="state-wrap">
       <div>加载失败，请刷新重试</div>
@@ -924,12 +913,6 @@ onUnmounted(() => {
     :background="config.background"
     @close="showSettingsModal = false"
     @saved="saveConfig"
-  />
-
-  <PasswordModal
-    :visible="showPasswordModal"
-    @verified="onPasswordVerified"
-    @cancel="onPasswordCancel"
   />
 
   <AuthModal

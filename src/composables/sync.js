@@ -127,8 +127,6 @@ export async function pullAndMerge() {
         body: JSON.stringify({ entries: toPush }),
       })
     }
-    // 服务端 config（服务列表+背景）总是跟随账号
-    window.dispatchEvent(new CustomEvent('server-config-changed'))
   } catch {}
 }
 
