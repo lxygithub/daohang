@@ -12,7 +12,7 @@ os.makedirs('/home/z/my-project/download', exist_ok=True)
 
 # 1. 组装文件清单
 map_file = os.path.join(DATA, 'prefetch-src-map.json')
-src_map = json.load(open(map_file, 'utf8'))
+src_map = json.load(open(map_file, encoding='utf8'))
 referenced = {f"{v['h']}.{v['e']}" for v in src_map.values() if isinstance(v, dict) and 'h' in v}
 print(f'src-map 引用图标文件 {len(referenced)} 个')
 
