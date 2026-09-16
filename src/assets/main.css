@@ -1574,6 +1574,9 @@ html[data-theme="light"] .layout-phone .card-icon.icon-text-mode::before {
 .pager-page {
   flex-shrink: 0;
   width: 100%;
+  /* 稀疏页（如最后一页只剩 1 个图标）不再把富余高度摊进行高：
+     行保持内容高度，卡片不会被拉成通栏玻璃底（hover/编辑态背景贴住卡片本身） */
+  align-content: start;
 }
 
 .pager-dots {
