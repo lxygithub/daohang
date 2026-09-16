@@ -1579,6 +1579,34 @@ html[data-theme="light"] .layout-phone .card-icon.icon-text-mode::before {
   align-content: start;
 }
 
+/* 拖拽到边缘 → 自动翻页提示（悬停计时中显示） */
+.pager-flip {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 76px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  color: var(--accent);
+  animation: pager-flip-pulse 0.9s var(--ease) infinite alternate;
+}
+.pager-flip svg { width: 34px; height: 34px; filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.45)); }
+.pager-flip.prev {
+  left: 0;
+  background: linear-gradient(90deg, var(--accent-soft), transparent);
+}
+.pager-flip.next {
+  right: 0;
+  background: linear-gradient(270deg, var(--accent-soft), transparent);
+}
+@keyframes pager-flip-pulse {
+  from { opacity: 0.55; }
+  to { opacity: 1; }
+}
+
 .pager-dots {
   display: flex;
   justify-content: center;

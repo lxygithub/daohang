@@ -227,6 +227,7 @@ function handlePagerDragAbort() {
   mdrag = null
   dragging.value = false
   dragDx.value = 0
+  clearFlipArm()
 }
 
 // 滚轮 / 触控板翻页：横向位移优先，翻页后短暂锁定防惯性连翻；
@@ -247,6 +248,74 @@ function handlePagerWheel(e) {
   wheelLockUntil = now + 550
   if (canNext) nextPage()
   else prevPage()
+}
+
+// ---- 拖拽排序时拖到左右边缘自动翻页 ----
+// HTML5 拖拽悬停在屏幕外的页上不会触发 dragover（被 overflow:hidden 裁掉），
+// 所以必须靠边缘侦测主动翻页，否则图标永远拖不到下一页。
+const EDGE_ZONE = 78     // 距边缘多少 px 内触发
+const FLIP_DELAY = 620   // 悬停多久翻页（ms）
+const flipHint = ref('') // '' | 'prev' | 'next' —— 只作视觉提示
+let flipTimer = null
+let flipDir = ''
+
+function clearFlipArm() {
+  clearTimeout(flipTimer)
+  flipTimer = null
+  flipDir = ''
+  flipHint.value = ''
+}
+
+function armFlip(dir) {
+  if (flipDir === dir) return
+  clearFlipArm()
+  flipDir = dir
+  flipHint.value = dir
+  flipTimer = setTimeout(() => {
+    flipTimer = null
+    flipDir = ''
+    flipHint.value = ''
+    if (dir === 'next') nextPage()
+    else prevPage()
+  }, FLIP_DELAY)
+}
+
+function handlePagerDragOver(e) {
+  // 始终 preventDefault：空白处也要能落点，否则只有卡片是合法投放目标
+  e.preventDefault()
+  e.dataTransfer.dropEffect = 'move'
+  if (pages.value.length < 2) return
+  const r = e.currentTarget.getBoundingClientRect()
+  const last = pages.value.length - 1
+  if (e.clientX - r.left < EDGE_ZONE && page.value > 0) armFlip('prev')
+  else if (r.right - e.clientX < EDGE_ZONE && page.value < last) armFlip('next')
+  else clearFlipArm()
+}
+
+function handlePagerDragLeave(e) {
+  // dragleave 会从子元素冒泡上来，真正离开 .pager-wrap 才清计时
+  const r = e.currentTarget.getBoundingClientRect()
+  const inside =
+    e.clientX >= r.left && e.clientX <= r.right &&
+    e.clientY >= r.top && e.clientY <= r.bottom
+  if (inside) return
+  clearFlipArm()
+}
+
+// 落在页面空白处：插到该页首个图标之前（页内空位不再是死区）
+function handlePagerDrop(e) {
+  clearFlipArm()
+  if (e.target.closest?.('.card')) return   // 落在卡片上：交给 NavCard 处理（drop 冒泡到此）
+  const raw = e.dataTransfer.getData('text/plain')
+  if (!/^\d+$/.test(raw)) return          // 外部拖入的文本/文件不是本次排序
+  const srcIndex = Number(raw)
+  const pi = Number(e.target.closest?.('.pager-page')?.dataset.page)
+  if (!Number.isInteger(pi)) return
+  const pg = pages.value[pi]
+  if (!pg || !pg.length) return
+  const targetIndex = pg[0]._index
+  if (srcIndex === targetIndex) return
+  window.dispatchEvent(new CustomEvent('drop-reorder', { detail: { srcIndex, targetIndex } }))
 }
 
 // ---- actions ----
@@ -362,6 +431,10 @@ onUnmounted(() => {
     :style="gridVars"
     @mousedown="handlePagerMouseDown"
     @wheel="handlePagerWheel"
+    @dragover="handlePagerDragOver"
+    @dragleave="handlePagerDragLeave"
+    @drop="handlePagerDrop"
+    @dragend="clearFlipArm"
   >
     <div
       class="pager"
@@ -370,8 +443,14 @@ onUnmounted(() => {
       @touchend="handlePagerTouchEnd"
       @touchcancel="handlePagerTouchEnd"
     >
+      <!-- 拖拽到边缘时的翻页提示 -->
+      <div v-if="flipHint" class="pager-flip" :class="flipHint" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <polyline :points="flipHint === 'next' ? '9 6 15 12 9 18' : '15 6 9 12 15 18'"/>
+        </svg>
+      </div>
       <div class="pager-track" :class="{ 'no-anim': dragging }" :style="{ transform: `translateX(calc(-${page * 100}% + ${dragDx}px))` }">
-        <div v-for="(pg, pi) in pages" :key="pi" class="pager-page card-grid layout-phone">
+        <div v-for="(pg, pi) in pages" :key="pi" class="pager-page card-grid layout-phone" :data-page="pi">
           <NavCard
             v-for="svc in pg"
             :key="svc.id"
