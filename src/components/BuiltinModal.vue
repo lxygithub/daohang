@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, inject } from 'vue'
 import { BUILTIN_CATEGORIES, BUILTIN_SITES } from '../data/builtinSites'
+import { textIconChars } from '../utils/textIcon'
 
 const props = defineProps({
   visible: Boolean,
@@ -128,7 +129,7 @@ function handleOverlayClick(e) {
               referrerpolicy="no-referrer"
               @error="onIconError(s)"
             >
-            <span v-else class="builtin-icon fallback">{{ s.name.charAt(0) }}</span>
+            <span v-else class="builtin-icon fallback">{{ textIconChars(s.name) }}</span>
             <div class="builtin-meta">
               <b>{{ s.name }}</b>
               <p>{{ s.desc }}</p>

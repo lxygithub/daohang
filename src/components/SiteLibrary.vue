@@ -1,5 +1,6 @@
 <script setup>
 import { ref, watch } from 'vue'
+import { textIconChars } from '../utils/textIcon'
 
 // 站点库选择器：从内置导航（D1 站点库）搜索/浏览并挑选站点。
 // 选中后把 name/url/icon 回填给父级（EditModal），可继续修改再保存。
@@ -146,7 +147,7 @@ function hue(name) {
               @error="$event.target.style.display = 'none'"
             >
             <span v-if="!it.icon" class="lib-icon lib-icon-ph" :style="{ background: `hsl(${hue(it.name)} 45% 42%)` }">
-              {{ it.name.slice(0, 1).toUpperCase() }}
+              {{ textIconChars(it.name) }}
             </span>
             <span class="lib-name">{{ it.name }}</span>
             <span class="lib-host">{{ host(it.url) }}</span>

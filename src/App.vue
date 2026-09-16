@@ -12,6 +12,7 @@ const { solar2lunar, getFestivals } = solarlunar
 import NavGrid from './components/NavGrid.vue'
 import EditModal from './components/EditModal.vue'
 import BuiltinModal from './components/BuiltinModal.vue'
+import SearchModal from './components/SearchModal.vue'
 import SettingsModal from './components/SettingsModal.vue'
 import PasswordModal from './components/PasswordModal.vue'
 import AuthModal from './components/AuthModal.vue'
@@ -258,9 +259,16 @@ function applySuggestion() {
   showEngineMenu.value = false
 }
 
-// Keyboard shortcut: "/" focuses search
+// Keyboard shortcuts: Ctrl/Cmd+F → fullscreen icon search; "/" focuses search
 function handleKeydown(e) {
+  // Ctrl+F / Cmd+F：全屏搜索已添加站点（覆盖浏览器默认查找，再按一次关闭）
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'f' || e.key === 'F')) {
+    e.preventDefault()
+    showSearchModal.value = !showSearchModal.value
+    return
+  }
   if (e.key === 'Escape') {
+    if (showSearchModal.value) { showSearchModal.value = false; return }
     if (editMode.value) { editMode.value = false; return }
     if (fabMenuOpen.value) { fabMenuOpen.value = false; return }
     if (addingEngine.value) { addingEngine.value = false; return }
@@ -369,6 +377,8 @@ function onPasswordCancel() {
 const showEditModal = ref(false)
 const editingIndex = ref(-1)
 const showBuiltinModal = ref(false)
+// 全屏搜索图标弹窗（Ctrl+F / FAB 菜单「搜索图标」）
+const showSearchModal = ref(false)
 
 function openAddModal() {
   editingIndex.value = -1
@@ -805,6 +815,12 @@ onUnmounted(() => {
               <rect x="14" y="14" width="7" height="7" rx="1.5"/>
             </svg>
           </button>
+          <button class="icon-btn fab-item" title="搜索图标（Ctrl+F）" @click="runFabAction(() => { showSearchModal = true })">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+              <circle cx="11" cy="11" r="7"/>
+              <line x1="21" y1="21" x2="16.2" y2="16.2"/>
+            </svg>
+          </button>
           <button class="icon-btn fab-item" title="设置" @click="runFabAction(() => { showSettingsModal = true })">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="3"/>
@@ -894,6 +910,12 @@ onUnmounted(() => {
     :services="config.services"
     @close="showBuiltinModal = false"
     @added="saveConfig"
+  />
+
+  <SearchModal
+    :visible="showSearchModal"
+    :services="config?.services || []"
+    @close="showSearchModal = false"
   />
 
   <SettingsModal

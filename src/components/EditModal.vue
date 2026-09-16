@@ -74,6 +74,9 @@ watch(() => props.visible, (val) => {
     url.value = ''
     skipAutoUrl = ''
     group.value = ''
+    // 必须一并清掉上个站点遗留的图标：否则连续新增时，第二个站点若解析
+    // 不到图标，会沿用上一个站点解析成功的图标（实际线上 bug）
+    iconUrl.value = ''
   }
 })
 
@@ -107,6 +110,9 @@ async function autoFetch(silent = false) {
     return
   }
   fetchingFavicon.value = true
+  // 陈旧响应守卫：请求期间用户若改了链接，晚到的响应不得覆盖当前内容
+  const forUrl = normalized
+  const stale = () => normalizeSiteUrl(url.value.trim()) !== forUrl
   let lan = false
   try {
     const ctrl = new AbortController()
@@ -131,6 +137,8 @@ async function autoFetch(silent = false) {
     }
     clearTimeout(timer)
 
+    // 链接已变：本次结果作废，避免旧站点的标题/图标串到新站点上
+    if (stale()) return
     let got = false
     if (data.title && (!name.value.trim() || name.value === lastNameAuto)) {
       name.value = data.title
@@ -248,10 +256,6 @@ function save() {
   })
 }
 
-function handleOverlayClick(e) {
-  if (e.target === e.currentTarget) emit('close')
-}
-
 // 从站点库选中：回填名称/链接/图标，可选预填分组；不再触发自动获取
 function onLibraryPick(site) {
   showLibrary.value = false
@@ -273,7 +277,8 @@ function onLibraryPick(site) {
 </script>
 
 <template>
-  <div class="modal-overlay" :class="{ active: visible }" @click="handleOverlayClick">
+  <div class="modal-overlay" :class="{ active: visible }">
+    <!-- 闭包控制：仅右上角 × / 取消 / 保存可关闭，点击遮罩空白处不关闭（用户要求） -->
     <div class="modal">
       <div class="modal-header">
         <h2>{{ modalTitle }}</h2>

@@ -1,5 +1,6 @@
 <script setup>
 import { computed, inject, ref, watch } from 'vue'
+import { textIconChars } from '../utils/textIcon'
 
 const props = defineProps({
   service: { type: Object, required: true },
@@ -48,10 +49,7 @@ const isTextIcon = computed(() =>
   props.service.iconType === 'preset'
 )
 
-const textChar = computed(() => {
-  const c = (props.service.name || '?').trim().charAt(0)
-  return c ? c.toUpperCase() : '?'
-})
+const textChar = computed(() => textIconChars(props.service.name))
 
 // ---- click: open service / in edit mode open editor ----
 // suppressNextClick: the click right after a touch long-press that fired edit
