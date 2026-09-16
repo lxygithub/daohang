@@ -21,7 +21,8 @@
     "test:builtin": "node scripts/test-builtin.mjs",
     "builtin:crawl": "node scripts/crawl-inftab.mjs crawl",
     "builtin:merge": "node scripts/crawl-inftab.mjs merge",
-    "icons:rehost": "node scripts/rehost-icons.mjs upload --conc=10 --delay=150",
+    "icons:rehost": "node scripts/rehost-icons.mjs upload",
+    "icons:audit": "node scripts/audit-icon-dups.mjs",
     "icons:apply": "node scripts/rehost-icons.mjs apply",
     "builtin:import": "node scripts/import-builtin.mjs"
   },

@@ -115,27 +115,29 @@ npm run db:import     # 备份 → D1；可生成 PostgreSQL / MySQL / SQLite �
 ```bash
 npm run builtin:crawl    # 1. 分页抓取 15 个分类（断点续爬，数据在 scripts/data/，不入库）
 npm run builtin:merge    # 2. 清洗去重 → builtin-sites.json
-npm run icons:rehost     # 3. 图标转存自建图床 builtin-icons/ 目录（断点续传，可反复跑到 0 失败）
+npm run icons:rehost     # 3. 图标转存自建图床 builtin-icons/ 目录（断点续传，限流+去重内置）
+npm run icons:audit      # 3.5 可选：已转存图标拉回本地按内容哈希审计重复 + 重建去重索引（只读图床）
 npm run icons:apply      # 4. 把转存结果写回 → builtin-final.json（失败项回退原始 CDN 直链）
 npm run builtin:import   # 5. 全量导入 D1（upsert 幂等，需先 re-arm 密钥）；增量升级图标加 --delta
 ```
 
-**当前进度快照（2026-09-15）**：
+**当前进度快照（2026-09-16）**：
 
-- ✅ 已完成：19,626 站点全量入库；首次 `icons:apply` + `--delta` 导入（1,578 站图标已换图床外链）；导入通道已 disarm。
-- 🔄 进行中：图标转存 2,528 / 19,178 个唯一图标源（≈13%），断点续传——`npm run icons:rehost` 反复跑到「待转存 0」为止；图床偶发 502/1102 属 CF Worker 瞬时过载，停几分钟再跑即可（建议 `-- --conc=9 --delay=200`）。
-- ⏳ 转存全部完成后：① `npm run icons:apply` 重新生成 builtin-final.json（当前文件为早期快照，落后于状态文件）；② re-arm（**必须用新密钥**，见下）→ `npm run builtin:import -- --delta` → 再 disarm。
+- ✅ 已完成：19,626 站点全量入库；首次 `icons:apply` + `--delta` 导入（1,578 站图标已换图床外链）；导入通道已 disarm；已转存图标 2,503 份内容已拉回本地缓存 `scripts/data/icon-cache/`（内容寻址，兼作备份与去重索引）。
+- 🔄 进行中：图标转存 ≈2,700 / 19,178 个唯一图标源，断点续传——`npm run icons:rehost` 反复跑到「待转存 0」为止。脚本已内置**全局限流**（默认并发 6、全局任意两次上传间隔 ≥150ms、遇 502/1102/429 全员指数退避冷却 2→30s），**不要再手动加 `--conc` 提速**；图床偶发 502/1102 时脚本会自动降速，无需干预。
+- 🛡️ 防重复（2026-09-16 新增）：下载后按内容 SHA-1 去重——同内容只上传一次（"秒传"复用已有外链），上传文件名确定性（`icon_<hash前缀>.<ext>`），重试/重跑不再产生新文件；实测已转存的 2,528 个文件中真正内容重复仅 25 个（1%），图床上若看到大量看似重复的图片，主要是 502 风暴期"上传成功但响应丢失→重试"产生的孤儿文件（未记录在状态文件，只能登录图床管理端清理）以及同色系/同风格 logo 的视觉相似，非脚本双写。
+- ⏳ 转存全部完成后：① `npm run icons:apply` 重新生成 builtin-final.json（当前文件为早期快照，落后于状态文件）；② re-arm（**必须用新密钥**，见下）→ `npm run builtin:import -- --delta` → 再 disarm。收尾 delta 已改为**仅图标差量模式**（只 UPDATE icon 列 = 1 行写入/站，不重写分类），约 1.6 万站 ≈ 1.6 万行，比旧模式（≈3 行/站）省约 2/3 额度。
 - ⚠️ 重试失败项：`upload` 重跑只补「从未尝试过」的源，已记录的失败项（`ok:false`）不会自动重试；如状态文件出现失败行，先剔除再跑：
-  `grep -v '"ok":false' scripts/data/rehost-state.jsonl > scripts/data/rehost-state.tmp && mv scripts/data/rehost-state.tmp scripts/data/rehost-state.jsonl`
+  `grep -v '"ok":false' scripts/data/rehost-state.jsonl > scripts/data/rehost-state.tmp && mv scripts/data/rehost-state.tmp scripts/data/rehost-state.jsonl`（源站 404 的永久失败项剔除后仍会重现，属预期，留着即可，apply 会回退原始直链）
 
 **导入密钥（re-arm / disarm）**：导入端点 `/api/builtin-sites/import` 由 `wrangler.toml [vars]` 的 `BUILTIN_IMPORT_KEY` 门禁。仓库公开，密钥只在导入窗口临时存在：导入前在该文件加回一行 `BUILTIN_IMPORT_KEY = "<openssl rand -hex 32 生成>"` 并同步写进 `scripts/data/import-key.txt`（**每次 re-arm 都必须生成新值**：2026-09-15 之前武装用的那枚密钥已随提交 619bcf0 进入公开 Git 历史，视为已泄露——`import-key.txt` 里的旧值同样作废，不可复用），推送部署后跑 `npm run builtin:import`，完成后立即删除该行再推送（disarm）。密钥暴露窗口 ≈ 导入窗口（分钟级），端点仅可写站点库两表且有行数上限。
 
-**额度注意**：D1 免费档每日 10 万行写入，**UTC 零点重置 = 北京时间早上 8 点**（不是国内零点）。单次全量导入 ≈ 3.5-4 万行（站点 upsert + 分类关联清插）；触发限额的表现：登录/注册/保存配置报 `D1_ERROR: exceeded free tier daily row write limit`，**读取不受影响**（浏览/站点库/搜索正常），次日自动恢复，无法提前解除。
+**额度注意**：D1 免费档每日 10 万行写入，**UTC 零点重置 = 北京时间早上 8 点**（不是国内零点）。行写入账目：全字段导入 ≈ 3 行/站（站点 upsert + 分类关联清插）、**仅图标差量（--delta，icons:true）= 1 行/站**；触发限额的表现：登录/注册/保存配置报 `D1_ERROR: exceeded free tier daily row write limit`，**读取不受影响**（浏览/站点库/搜索正常），次日自动恢复，无法提前解除。图标转存（rehost）不写 D1（仅上传图床；仅当 cookie 失效时注册服务账号产生 2-3 行）。
 
 **事故记录（2026-09-15）**：一天内连续跑了全量导入（≈4 万行）+ 前期失败导入尝试（已写行不退回）+ delta 导入 + 测试流量，把当日 10 万行打满，站点写功能瘫痪到次日。教训已固化两层防护：
 
-1. **脚本护栏**：`import-builtin.mjs` 启动时按 `条数 × 3` 估算行写入，> 5 万行直接拒绝执行（零网络请求），确认额度充足需显式加 `--force`。
-2. **操作纪律**：一个 UTC 日最多跑一波大批量导入；全量导入已完成、**永远不要再跑**；转存完成后那次收尾 delta 导入（约 1.7 万站 ≈ 5 万行）单独挑一个新鲜的日子跑，当天不要叠加任何其它写操作（测试、冒烟、反复导入都不行）。
+1. **脚本护栏**：`import-builtin.mjs` 启动时估算行写入（全字段 3 行/站、差量 1 行/站），> 5 万行直接拒绝执行（零网络请求），确认额度充足需显式加 `--force`；`--dry-run` 可离线预检模式与行数，不碰网络。
+2. **操作纪律**：一个 UTC 日最多跑一波大批量导入；全量导入已完成、**永远不要再跑**；转存完成后那次收尾 delta 导入（仅图标模式约 1.6 万行，额度压力已大幅下降）仍建议单独挑一个新鲜的日子跑，当天不要叠加其它大批量写操作。
 
 若后续确有频繁批量写入需求：升级 Workers Paid（$5/月）可解除每日 10 万行上限；日常小量写入（登录/保存配置/日常增量）免费档完全够用。
 

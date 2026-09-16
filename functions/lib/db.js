@@ -252,6 +252,18 @@ export async function replaceBuiltinCats(env, pairs) {
   ).bind(JSON.stringify(pairs)).run()
 }
 
+/** 仅更新图标列（图标外链差量升级专用）：每站 1 行写入，不触碰分类关联，
+ *  较全字段 upsert（站点行 + 分类删插 ≈ 3 行/站）省约 2/3 写额度。
+ *  rows: [{ url, icon, updatedAt }]；url 不存在时该语句写 0 行，天然幂等。 */
+export async function updateBuiltinIcons(env, rows) {
+  if (!rows.length) return
+  const stmts = rows.map(r =>
+    env.DB.prepare("UPDATE builtin_sites SET icon = ?2, updated_at = ?3 WHERE url = ?1")
+      .bind(r.url, r.icon, r.updatedAt)
+  )
+  await env.DB.batch(stmts)
+}
+
 export async function countBuiltinSites(env) {
   const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM builtin_sites").first()
   return row ? row.n : 0

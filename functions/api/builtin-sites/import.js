@@ -9,8 +9,12 @@
 // 协议：POST JSON
 //   { "key": "<BUILTIN_IMPORT_KEY>",
 //     "sites": [ { url, name, icon, iconSrc, description, rate, sourceId, cats: [] }, ... ] }
+//   全字段模式（默认）：upsert 站点 + 重写分类关联，≈3 行写入/站。
+//   { "key": "...", "icons": true, "sites": [ { url, icon }, ... ] }
+//   仅图标模式（icons:true）：只 UPDATE icon 列，1 行写入/站，不动分类——
+//   图标外链差量升级专用（D1 免费档日写 10 万行，能省则省）。
 // 单请求 ≤ 150 条；全表 ≤ 60000 条；url 唯一，重复导入为 upsert（幂等）。
-import { ensureSchema, upsertBuiltinSites, replaceBuiltinCats, countBuiltinSites, BUILTIN_CATS } from "../../lib/db.js";
+import { ensureSchema, upsertBuiltinSites, replaceBuiltinCats, updateBuiltinIcons, countBuiltinSites, BUILTIN_CATS } from "../../lib/db.js";
 import { json, timingSafeEqual, nowISO } from "../../lib/auth.js";
 
 const MAX_PER_REQUEST = 150;
@@ -46,6 +50,22 @@ export async function onRequest(context) {
   const list = Array.isArray(body?.sites) ? body.sites : [];
   if (!list.length) return json({ error: "sites 为空" }, { status: 400 });
   if (list.length > MAX_PER_REQUEST) return json({ error: `单请求最多 ${MAX_PER_REQUEST} 条` }, { status: 413 });
+
+  // ── 仅图标差量模式 ────────────────────────────────────────
+  // sites 仅需 {url, icon}；每站 1 行写入（UPDATE icon），不重写分类关联。
+  if (body.icons === true) {
+    const iconRows = [];
+    for (const it of list) {
+      const u = validUrl(String(it?.url || ""));
+      if (!u) continue;
+      const icon = cleanStr(it.icon, 500);
+      if (!icon) continue;
+      iconRows.push({ url: u.href, icon, updatedAt: nowISO() });
+    }
+    if (!iconRows.length) return json({ error: "无有效条目（url/icon 校验未通过）" }, { status: 422 });
+    await updateBuiltinIcons(env, iconRows);
+    return json({ ok: true, accepted: iconRows.length, icons: true, total: await countBuiltinSites(env) });
+  }
 
   const rows = [];
   const catPairs = [];
