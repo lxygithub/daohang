@@ -167,6 +167,9 @@ Pages 项目 → Custom domains → Set up a custom domain，按提示在域名 
 **频繁 429？**
 登录/注册/发码有限流（isolate 内存级）。生产单人使用不会触达；本地连跑多套测试会耗尽配额，重启 wrangler 即可。
 
+**图床外链打不开/显示 404？**
+先查链接是否带 **`/file/` 前缀**——cfbed 的文件服务路由是 `https://img-bed.ieoc.top/file/<目录>/<文件名>`；不带前缀的路径会命中图床前端 SPA 的兜底页（HTTP 200 但 content-type 是 text/html，页面渲染成 404 视图，极具迷惑性）。自检方法：`curl -sI <链接>` 看 content-type 是否 `image/*`。2026-09-16 实测：`/meizitu/xxx.png` 404 假象 ↔ `/file/meizitu/xxx.png` 200 image/png，文件本身一直健在；复制链接用面板「复制链接」或上传响应的 `src` 字段（自带 /file/），外链工具（PicGo 等）自定义 URL 前缀时记得补上。
+
 **上传图标提示「图床未配置 / 已改用内联保存」？**
 前者说明 `IMG_UPLOAD_API` 还没配置（或配置后未重新部署）；后者是图床返回了错误——先用 curl 直接测图床接口（`curl -F file=@1.png https://图床/upload`），按其响应调整字段名（`IMG_UPLOAD_FIELD`）与鉴权（`IMG_UPLOAD_TOKEN` / `IMG_UPLOAD_QUERY`）；也可在 Brevo 之外看图床服务日志。回退机制下图标仍会保存，不影响使用。
 
