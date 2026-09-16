@@ -1560,43 +1560,21 @@ html[data-theme="light"] .layout-phone .card-icon.icon-text-mode::before {
   overflow: hidden;
   margin: 0 -4px;
   padding: 4px;
+  cursor: grab;          /* 空白处可拖拽翻页 */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .pager-track {
   display: flex;
   transition: transform 0.42s var(--ease);
 }
+.pager-track.no-anim { transition: none; }
 
 .pager-page {
   flex-shrink: 0;
   width: 100%;
 }
-
-.pager-arrow {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  border: 1px solid var(--border);
-  background: rgba(15, 18, 27, 0.72);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  color: var(--text-2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  opacity: 0;
-  z-index: 5;
-  transition: opacity 0.2s, background 0.2s, color 0.2s;
-}
-.pager:hover .pager-arrow { opacity: 0.92; }
-.pager-arrow:hover { color: #fff; background: rgba(38, 44, 62, 0.9); }
-.pager-arrow.prev { left: -8px; }
-.pager-arrow.next { right: -8px; }
-.pager-arrow svg { width: 16px; height: 16px; }
 
 .pager-dots {
   display: flex;
@@ -1947,8 +1925,6 @@ html[data-theme="light"] .fab-item { background: rgba(15, 23, 42, 0.05); }
 html[data-theme="light"] .fab-item:hover { background: rgba(15, 23, 42, 0.1); }
 html[data-theme="light"] .settings-drawer { box-shadow: -22px 0 54px rgba(15, 23, 42, 0.16); }
 html[data-theme="light"] .pager-dot { background: rgba(15, 23, 42, 0.16); }
-html[data-theme="light"] .pager-arrow { background: rgba(255, 255, 255, 0.9); }
-html[data-theme="light"] .pager-arrow:hover { background: #fff; color: #1c2434; }
 html[data-theme="light"] .engine-btn { background: rgba(15, 23, 42, 0.045); }
 html[data-theme="light"] .grad-dir { background: rgba(15, 23, 42, 0.04); }
 html[data-theme="light"] .grad-builder,
@@ -1960,7 +1936,6 @@ html[data-theme="light"] .font-swatch { border-color: rgba(15, 23, 42, 0.18); }
    Responsive — new elements
    ============================================================ */
 @media (max-width: 768px) {
-  .pager-arrow { display: none; }
   .layout-phone .card { gap: 10px; }
   .hero { padding: 44px 0 36px; }
   .alpha-wrap { grid-template-columns: repeat(auto-fill, minmax(178px, 1fr)); gap: 20px 12px; }

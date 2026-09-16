@@ -174,6 +174,81 @@ function handlePagerTouchEnd(e) {
   swipe = null
 }
 
+// 鼠标拖动空白处翻页（桌面端）
+// 起点 .card 上不接管——卡片自带 HTML5 拖拽排序；圆点等 button 也跳过
+const dragDx = ref(0)      // 拖动进行中的横向位移（px，跟手预览）
+const dragging = ref(false)
+let mdrag = null
+
+function handlePagerMouseDown(e) {
+  if (e.button !== 0 || pages.value.length < 2) return
+  if (e.target.closest?.('.card') || e.target.closest?.('button')) return
+  mdrag = { x: e.clientX, y: e.clientY, dx: 0, dy: 0 }
+  dragging.value = true
+  document.body.style.cursor = 'grabbing'
+  window.addEventListener('mousemove', handlePagerMouseMove)
+  window.addEventListener('mouseup', handlePagerMouseUp)
+}
+
+function handlePagerMouseMove(e) {
+  if (!mdrag) return
+  mdrag.dx = e.clientX - mdrag.x
+  mdrag.dy = e.clientY - mdrag.y
+  const { dx, dy } = mdrag
+  if (Math.abs(dx) <= Math.abs(dy) || Math.abs(dx) < 4) return
+  // 拖到边界继续拖给一点阻力（橡皮筋感）
+  const atEdge =
+    (dx < 0 && page.value >= pages.value.length - 1) ||
+    (dx > 0 && page.value <= 0)
+  dragDx.value = atEdge ? Math.round(dx * 0.28) : dx
+}
+
+function handlePagerMouseUp() {
+  window.removeEventListener('mousemove', handlePagerMouseMove)
+  window.removeEventListener('mouseup', handlePagerMouseUp)
+  document.body.style.cursor = ''
+  if (!mdrag) return
+  const { dx, dy } = mdrag
+  mdrag = null
+  dragging.value = false
+  if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 48) {
+    if (dx < 0) nextPage()
+    else prevPage()
+  }
+  dragDx.value = 0
+}
+
+// 窗口失焦时丢弃未完成的拖拽，避免 mouseup 丢失导致状态卡死
+function handlePagerDragAbort() {
+  if (!mdrag) return
+  window.removeEventListener('mousemove', handlePagerMouseMove)
+  window.removeEventListener('mouseup', handlePagerMouseUp)
+  document.body.style.cursor = ''
+  mdrag = null
+  dragging.value = false
+  dragDx.value = 0
+}
+
+// 滚轮 / 触控板翻页：横向位移优先，翻页后短暂锁定防惯性连翻；
+// 已在边缘时不拦截，保留页面默认滚动
+let wheelLockUntil = 0
+function handlePagerWheel(e) {
+  if (pages.value.length < 2) return
+  let d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY
+  if (e.deltaMode === 1) d *= 40
+  else if (e.deltaMode === 2) d *= window.innerHeight || 800
+  if (Math.abs(d) < 8) return
+  const now = performance.now()
+  if (now < wheelLockUntil) { e.preventDefault(); return }
+  const canNext = d > 0 && page.value < pages.value.length - 1
+  const canPrev = d < 0 && page.value > 0
+  if (!canNext && !canPrev) return
+  e.preventDefault()
+  wheelLockUntil = now + 550
+  if (canNext) nextPage()
+  else prevPage()
+}
+
 // ---- actions ----
 function recordClick(id) {
   clicks.value = { ...clicks.value, [id]: (clicks.value[id] || 0) + 1 }
@@ -249,6 +324,7 @@ function handleDeleteService(e) {
 }
 
 onMounted(() => {
+  window.addEventListener('blur', handlePagerDragAbort)
   window.addEventListener('drop-reorder', handleDropReorder)
   window.addEventListener('delete-service', handleDeleteService)
   window.addEventListener('open-first-match', handleOpenFirstMatch)
@@ -259,6 +335,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  window.removeEventListener('blur', handlePagerDragAbort)
   window.removeEventListener('drop-reorder', handleDropReorder)
   window.removeEventListener('delete-service', handleDeleteService)
   window.removeEventListener('open-first-match', handleOpenFirstMatch)
@@ -279,7 +356,13 @@ onUnmounted(() => {
   </div>
 
   <!-- 手机屏幕式分页（phone 布局 + 网格视图 + 未搜索 + 无分组） -->
-  <div v-else-if="pagerOn" class="pager-wrap" :style="gridVars">
+  <div
+    v-else-if="pagerOn"
+    class="pager-wrap"
+    :style="gridVars"
+    @mousedown="handlePagerMouseDown"
+    @wheel="handlePagerWheel"
+  >
     <div
       class="pager"
       @touchstart="handlePagerTouchStart"
@@ -287,7 +370,7 @@ onUnmounted(() => {
       @touchend="handlePagerTouchEnd"
       @touchcancel="handlePagerTouchEnd"
     >
-      <div class="pager-track" :style="{ transform: `translateX(-${page * 100}%)` }">
+      <div class="pager-track" :class="{ 'no-anim': dragging }" :style="{ transform: `translateX(calc(-${page * 100}% + ${dragDx}px))` }">
         <div v-for="(pg, pi) in pages" :key="pi" class="pager-page card-grid layout-phone">
           <NavCard
             v-for="svc in pg"
@@ -298,12 +381,6 @@ onUnmounted(() => {
           />
         </div>
       </div>
-      <button v-if="page > 0" class="pager-arrow prev" type="button" title="上一页" @click="prevPage">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
-      </button>
-      <button v-if="page < pages.length - 1" class="pager-arrow next" type="button" title="下一页" @click="nextPage">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-      </button>
     </div>
     <div v-if="pages.length > 1" class="pager-dots">
       <template v-if="pages.length <= 9">
