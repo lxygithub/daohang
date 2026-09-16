@@ -116,10 +116,16 @@ npm run db:import     # 备份 → D1；可生成 PostgreSQL / MySQL / SQLite �
 npm run builtin:crawl    # 1. 分页抓取 15 个分类（断点续爬，数据在 scripts/data/，不入库）
 npm run builtin:merge    # 2. 清洗去重 → builtin-sites.json
 npm run icons:rehost     # 3. 图标转存自建图床 builtin-icons/ 目录（断点续传，限流+去重内置）
+npm run icons:prefetch   # 3.1 可选：把待转存图标预下载到本地（供离线打包本地上传套件）
 npm run icons:audit      # 3.5 可选：已转存图标拉回本地按内容哈希审计重复 + 重建去重索引（只读图床）
 npm run icons:apply      # 4. 把转存结果写回 → builtin-final.json（失败项回退原始 CDN 直链）
 npm run builtin:import   # 5. 全量导入 D1（upsert 幂等，需先 re-arm 密钥）；增量升级图标加 --delta
 ```
+
+> **本地上传套件**：沙箱/服务器网络受限时，可把待转存图标预下载后打包（`scripts/build-rehost-kit.py`，
+> 内含 `scripts/rehost-local.mjs` 上传脚本 + 进度/去重索引 + 图标文件），下载到本地电脑执行
+> `node rehost-local.mjs upload` 续跑——限流/去重/断点续传逻辑与 `icons:rehost` 完全一致，跑完 `apply`
+> 把 `builtin-final.json` 发回即可进入收尾流程。
 
 **当前进度快照（2026-09-16）**：
 

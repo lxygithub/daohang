@@ -24,7 +24,8 @@
     "icons:rehost": "node scripts/rehost-icons.mjs upload",
     "icons:audit": "node scripts/audit-icon-dups.mjs",
     "icons:apply": "node scripts/rehost-icons.mjs apply",
-    "builtin:import": "node scripts/import-builtin.mjs"
+    "builtin:import": "node scripts/import-builtin.mjs",
+    "icons:prefetch": "node scripts/prefetch-pending.mjs"
   },
   "dependencies": {
     "cropperjs": "^2.1.1",
