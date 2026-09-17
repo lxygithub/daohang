@@ -334,5 +334,13 @@ Workers Builds 里 Build command 填 `npm run build`、Deploy command 填 `npx w
 
 ### 回退
 
-Pages 项目保留未删（仅剩 `<project>.pages.dev`），把域名挂回 Pages 的自定义域即可回退到旧形态；
-D1 绑定也仍在 `wrangler.toml` 中，代码里保留 D1 分支作兜底。
+Pages 项目已于 2026-09-17 删除，回退路径变成以下两条：
+
+1. **只想回退 Worker 版本**：`npx wrangler versions list` 找到上一个版本，用
+   `npx wrangler versions deploy` 指定版本号回滚；或直接在 Dashboard → Worker → Deployments 里回滚。
+2. **想退回 D1 数据层**：`git revert` 掉切换 PG 的那个提交（`57cc7aa`）后 push（Workers Builds 会自动部署）。
+   `wrangler.toml` 里的 `[[d1_databases]]` 绑定和代码里的 D1 分支都还在，D1 数据保留着**切换到 PG 那一刻**的快照；
+   切换之后的写入不会回补，属已知代价。
+
+如果将来又想要 Pages 形态，按旧版的 `pages_build_output_dir = "dist"` + Pages 项目（构建命令 `npm run build`、
+输出目录 `dist`）即可重建，但 Pages Functions 的子请求过不了网关 WAF，接入 SQL Gateway 就必须是 Worker。
