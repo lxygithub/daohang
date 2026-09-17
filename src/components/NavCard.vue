@@ -238,7 +238,7 @@ function handleTouchEnd(e) {
     <div class="icon-wrap">
       <div class="card-icon" :class="{ 'icon-text-mode': isTextIcon }" :style="{ '--h': hue }">
         <img
-          v-if="service.iconType === 'url' && service.icon"
+          v-if="service.iconType === 'url' && service.icon && !iconFailed"
           :src="service.icon"
           :alt="service.name"
           referrerpolicy="no-referrer"
