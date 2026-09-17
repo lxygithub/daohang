@@ -255,17 +255,21 @@ daohang Pages Functions（可信服务端）
 
 **开通步骤（顺序不能反）**：
 
-1. **服务器建库**：把 `scripts/pg-schema.sql` 里的 `__RO__`/`__RW__` 替换为 `/etc/sql-gateway/gateway.env` 中 forgotit-postgres 的只读/读写账号名，以 owner 身份在 forgotit-postgres 所指数据库执行：
+1. **服务器建库**：把 `scripts/pg-schema.sql` 里的 `__RO__`/`__RW__` 替换为 `/etc/sql-gateway/gateway.env` 中**本项目 target**（`daohang-postgres`）的只读/读写账号名，以 owner 身份在 `daohang` 库执行：
    ```bash
    sed -i 's/__RO__/forgotit_ro/g; s/__RW__/forgotit_rw/g' pg-schema.sql
-   sudo -u postgres psql -d <forgotit-postgres 所指库> -f pg-schema.sql
+   docker exec -i forgotit-postgres psql -U <owner> -d daohang -f - < pg-schema.sql
    ```
 2. **搬迁数据**：`backups/daohang-pg-data.sql`（或重跑 `CLOUDFLARE_API_TOKEN=xxx node scripts/d1-to-pg.mjs` 取最新）传到服务器执行：
    ```bash
    psql -d <同一库> -f daohang-pg-data.sql
    ```
    幂等（`ON CONFLICT DO NOTHING`，重复执行只跳过已存在行）；导入后自动 `setval` 回拨三张 identity 表的序列。
-3. **网关侧放行 target**：确认 `/etc/sql-gateway/gateway.config.json` 的 `clients.forgotit-worker.targets` 含 `"forgotit-postgres": ["read-only", "read-write"]`（缺则补），`sudo systemctl restart sql-gateway`，本机 `curl http://127.0.0.1:8787/readyz` 确认。
+3. **网关侧放行 target**：确认 `/etc/sql-gateway/gateway.config.json` 的 `clients.forgotit-worker.targets` 含 `"daohang-postgres": ["read-only", "read-write"]`（缺则补），`sudo systemctl restart sql-gateway`，本机 `curl http://127.0.0.1:8787/readyz` 确认（会逐个 target 报 ready）。
+
+   > 2026-09-17 起改为**每项目独立库**：daohang 的表从「forgotit 库里的 daohang schema」迁到独立的
+   > `daohang` 库（`pg_dump -n daohang` → 新库，数据与 schema 名都不变，应用代码零改动），
+   > 账号换成 `sql_gateway_daohang_ro/rw`；跨库访问会被数据库直接拒绝，可单独备份/下线。
 4. **验证探针**：管理员登录 daohang → `POST /api/gateway/ping`（带同源 Cookie）返回 `ok: true` 即全链路通；非 Worker 环境（浏览器直开、curl）得到 Cloudflare 403 是 WAF 在按设计拦截，不是故障。
 5. **切换代码**：以上三步全绿后再部署本次 push 的 PG 版代码。部署后 D1 不再被写入，保留作回退源（回退 = 部署上一个 D1 版提交；窗口期的新注册/新保存不会回补，属已知代价）。
 
