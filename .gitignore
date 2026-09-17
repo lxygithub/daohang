@@ -6,4 +6,9 @@ functions-worker/
 shots/
 backups/
 .dev.vars
-scripts/data/
+# scripts/data 整体忽略，仅白名单四个转存资产文件（图标本体 prefetch-icons/ 874M 不进 git）
+scripts/data/*
+!scripts/data/rehost-state.jsonl
+!scripts/data/builtin-final.json
+!scripts/data/icon-hash-index.json
+!scripts/data/prefetch-src-map.json
