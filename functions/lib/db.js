@@ -255,6 +255,15 @@ export async function countBuiltinSites(env) {
   return row ? Number(row.n) : 0
 }
 
+/** 各分类站点数（侧栏角标）：单条 GROUP BY，1 次网关往返。 */
+export async function builtinCatCounts(env) {
+  const rows = await q(env, 'read-only',
+    `SELECT cat, COUNT(*)::int AS n FROM ${T('builtin_site_cats')} GROUP BY cat`)
+  const m = {}
+  for (const r of rows) m[r.cat] = Number(r.n)
+  return m
+}
+
 /** 读接口：分类/关键词过滤 + rate 排序 + 分页。q 做 name/url 前后通配 LIKE。
  *  count 与数据页合并为一次网关往返（同一短事务）。 */
 export async function listBuiltinSites(env, { cat = '', qstr = '', page = 1, pageSize = 50 }) {
