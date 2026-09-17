@@ -19,7 +19,8 @@ export async function onRequest(context) {
 
   if (cat && !BUILTIN_CATS.includes(cat)) return json({ error: "未知分类" }, { status: 400 });
 
-  const data = await listBuiltinSites(env, { cat, q, page, pageSize });
+  // 注意：listBuiltinSites 的解构字段名是 qstr，这里直接传 q 会导致关键词永不生效（搜索返回全量）。
+  const data = await listBuiltinSites(env, { cat, qstr: q, page, pageSize });
   return json({
     ok: true,
     cats: BUILTIN_CATS,
