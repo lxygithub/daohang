@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, provide, watch } from 'vue'
-import { useConfig } from './composables/useConfig'
+// 本地缓存：冷启动先渲染上次配置，避免等三次网关往返（每次 ≈2.5s）才出首屏
+import { useConfig, primeConfigFromCache, clearConfigCache } from './composables/useConfig'
 import { useToast } from './composables/useToast'
 import {
   loadView, saveView, emitView, applyFont,
@@ -402,6 +403,7 @@ async function doLogout() {
   userMenuOpen.value = false
   await syncLogout()
   showToast('已退出登录')
+  clearConfigCache()   // 换账号/登出后不得再渲染上一账号的缓存配置
   config.value = null
   showAuthModal.value = true
 }
@@ -560,11 +562,14 @@ onMounted(async () => {
     try { searchQuery.value = localStorage.getItem('nav_search_query') || '' } catch {}
   }
   fetchQuote()
+  // 先用本地缓存出页面：三个网关往返（鉴权→偏好→配置，每次 ≈2.5s）不再阻塞首屏
+  primeConfigFromCache()
   if (await checkAuth()) {
-    await pullAndMerge()
-    await loadConfig()
+    // 偏好与配置互不依赖，并行拉取，少等一个往返
+    await Promise.all([pullAndMerge(), loadConfig()])
     applyBackground()
   } else {
+    clearConfigCache()
     config.value = null
     loading.value = false
     showAuthModal.value = true
