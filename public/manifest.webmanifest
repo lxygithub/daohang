@@ -11,5 +11,13 @@
     { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" },
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
     { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    { "name": "搜索", "short_name": "搜索", "url": "/?action=search",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }] },
+    { "name": "站点库", "short_name": "站点库", "url": "/?action=library",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }] },
+    { "name": "新增服务", "short_name": "新增", "url": "/?action=add",
+      "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }] }
   ]
 }

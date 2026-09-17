@@ -568,6 +568,17 @@ onMounted(async () => {
     // 偏好与配置互不依赖，并行拉取，少等一个往返
     await Promise.all([pullAndMerge(), loadConfig()])
     applyBackground()
+    // 桌面图标长按菜单（manifest.shortcuts）走的是深链 /?action=search|library|add：
+    // 处理完立刻清掉参数，避免刷新时重复弹出
+    try {
+      const act = new URLSearchParams(location.search).get('action')
+      if (act) {
+        history.replaceState(null, '', location.pathname + location.hash)
+        if (act === 'search') showSearchModal.value = true
+        else if (act === 'library') showBuiltinModal.value = true
+        else if (act === 'add') openEditModal(-1)
+      }
+    } catch {}
   } else {
     clearConfigCache()
     config.value = null
