@@ -31,6 +31,24 @@ async function raw(env, mode, statements) {
   return r.results ?? []
 }
 
+/**
+ * 按域名在内置站点库里找图标（只认自家图床外链）。
+ * 用于「粘贴链接自动抓图标」的优先源：图床链接国内可达、无第三方依赖、无混合内容，
+ * 比站点自身 favicon（常被墙/防盗链）可靠得多。
+ * 注意：同域名可能有多行（github.com 就有 6 条），只取带图床图标的那行。
+ */
+export async function findBuiltinIconByHost(env, hostname) {
+  const host = String(hostname || '').toLowerCase().replace(/^www\./, '').trim()
+  if (!host) return null
+  const row = await one(env, 'read-only',
+    `SELECT icon FROM ${T('builtin_sites')}
+      WHERE icon LIKE 'https://img-bed.ieoc.top/%'
+        AND regexp_replace(split_part(regexp_replace(lower(url), '^https?://', ''), '/', 1), '^www\\.', '') = $1
+      LIMIT 1`,
+    [host])
+  return row?.icon || null
+}
+
 /** 大批量语句按 20 条/请求分批执行（跨批非事务；调用方须幂等）。 */
 async function execBatch(env, mode, statements) {
   for (let i = 0; i < statements.length; i += 20) {

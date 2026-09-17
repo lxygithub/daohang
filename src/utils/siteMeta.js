@@ -180,11 +180,8 @@ export async function publicFallbackIcon(siteUrl) {
     "/favicon.png",
     "/favicon.svg",
   ].map((p) => { try { return new URL(p, siteUrl).href } catch { return "" } }).filter(Boolean)
-  urls.push(
-    `https://icons.duckduckgo.com/ip3/${domain}.ico`,
-    `https://www.google.com/s2/favicons?domain=${domain}&sz=64`,
-    `https://api.iowen.cn/favicon/${domain}.png`,
-  )
+  // 只探测站点自身的常见 favicon 路径。公共图标服务（duckduckgo / google s2）在国内不可达，
+  // 会把图标换成坏链接；内网/抓不到的情况交给首页的首字母回退块，不再塞第三方地址。
   const hits = await Promise.all(urls.map((u) => probeIcon(u)))
   return hits.find(Boolean) || ""
 }

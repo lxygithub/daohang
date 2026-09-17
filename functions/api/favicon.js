@@ -195,27 +195,16 @@ export async function findIcon(siteUrl, preFetched = null) {
     if (hit) return hit;
   }
 
-  let domain = "";
-  try { domain = new URL(base).hostname; } catch {}
-  const lan = domain && isPrivateHost(domain);
-
-  // 常见路径 + 公共图标服务并发探测（路径优先，服务兜底）。
-  // 全部并发把最坏耗时从 6×2s 串行压到 ~2.5s。
+  // 常见路径并发探测（最坏耗时从 7×2.5s 串行压到 ~2.5s）。
   const pathProbes = FALLBACK_PATHS.map((p) => {
     try { return probeImage(new URL(p, base).href); } catch { return Promise.resolve(null); }
   });
-  const services = lan ? [] : [
-    `https://icons.duckduckgo.com/ip3/${domain}.ico`,
-    `https://www.google.com/s2/favicons?domain=${domain}&sz=64`,
-    `https://api.iowen.cn/favicon/${domain}.png`, // 对国内站点覆盖更好
-    `https://favicon.im/${domain}?larger=true`,
-  ].filter(Boolean).map((u) => probeImage(u));
-
-  const results = await Promise.all([...pathProbes, ...services]);
-  const pathHit = results.slice(0, pathProbes.length).find(Boolean);
-  if (pathHit) return pathHit;
-  const serviceHit = results.slice(pathProbes.length).find(Boolean);
-  return serviceHit || null;
+  // 不再使用第三方公共图标服务。原因：这段代码跑在 Cloudflare 边缘（境外机房），
+  // 那里能连通 google/s2 与 icons.duckduckgo.com，但它产出的链接在国内浏览器里打不开——
+  // 2026-09-17 实测两者在国内均超时，等于把图标换成一个坏链接（用户首页多格出现破图）。
+  // 现在的图标优先级：内置站点库的图床外链（见 meta.js）→ 站点自身 favicon → 前端首字母回退。
+  const results = await Promise.all(pathProbes);
+  return results.find(Boolean) || null;
 }
 
 export async function onRequest(context) {
