@@ -136,12 +136,10 @@ npm run builtin:import   # 5. 全量导入 D1（upsert 幂等，需先 re-arm �
 - ✅ **图标转存完成**：19,175 / 19,178 个唯一图标源已上图床（99.98%）。未上图床的 3 个源均为源数据本身损坏（`/undefined` 路径、双斜杠 404、截断文件、<50B 垃圾图），apply 时自动回退原始直链，无补传价值。
 - ✅ **icons:apply 完成**：`scripts/data/builtin-final.json` 已重新生成——19,626 站中图床外链 19,615、回退原始直链 11。
 - ✅ 去重复核：已转存图标中真正内容重复仅 25 个（≈1%），同色系/同风格 logo 的视觉相似非重复；2,503 份内容快照缓存于 `scripts/data/icon-cache/`（内容寻址，兼作备份）。
-- ⏳ **唯一未完成：D1 差量导入 19,615 行**（把 D1 站点表的 icon 字段刷成图床外链）。09-17 执行时被「账户当日 D1 写额度耗尽」阻塞（根因见下文 09-17 事故），**北京时间 08:00（UTC 零点）额度重置后一条命令收尾**：
-
-  ```bash
-  CLOUDFLARE_API_TOKEN=<D1:Edit权限的token> node scripts/d1-direct-import.mjs --run   # ~5-8 分钟
-  CLOUDFLARE_API_TOKEN=<...> node scripts/d1-direct-import.mjs --check               # 预检（只读，不耗写额度）
-  ```
+- ✅ **图标已写回生产库（2026-09-17 晚）**：数据层此时已切到 PostgreSQL，D1 差量导入不再需要；
+  直接在 PG 上回填了 **16,853 行** `icon`（方法见「十二、图床收尾」），当前 18,432 条走图床、1,194 条回退原始直链。
+- ⏳ **图床去重未完成**：`builtin-icons/` 有 29,667 个文件、实际只用到 16,536 个内容，多余的是历次重复上传。
+  扫描进度 22,714 / 29,667 已缓存，**明天（D1 写额度恢复后）继续**，详见「十二」。
 
   导入完成即全量生效（当前线上仍是 09-15 的 1,578 条老外链，站点功能正常，仅图标未更新）。
 
@@ -344,3 +342,72 @@ Pages 项目已于 2026-09-17 删除，回退路径变成以下两条：
 
 如果将来又想要 Pages 形态，按旧版的 `pages_build_output_dir = "dist"` + Pages 项目（构建命令 `npm run build`、
 输出目录 `dist`）即可重建，但 Pages Functions 的子请求过不了网关 WAF，接入 SQL Gateway 就必须是 Worker。
+
+---
+
+## 十二、图床收尾：图标回填与去重（2026-09-17）
+
+### 已完成的回填（免下载）
+
+转存阶段把 `scripts/data/prefetch-src-map.json`（源 URL → 内容 sha1）和图床里**以 sha1 命名的文件**
+（`<40位sha1>.png`）都保留了下来，两者一拼就是完整的 `源URL → 图床外链` 映射，**一张图都不用下载**：
+
+```bash
+# 1) 拉图床文件清单（表 files 里 id 才是真实路径：builtin-icons/<前缀>_<文件名>）
+#    公开地址 = https://img-bed.ieoc.top/file/<id>
+# 2) 取 hash 命名的文件名 → 建 hash → URL
+# 3) 对库里 icon 仍非图床外链的行，用 src_map[icon].h 查到外链后 UPDATE
+```
+
+实测结果：**16,853 / 18,047 行成功回填**（93.4%），库内状态从「图床 1,579 / 原站 18,047」变为
+**「图床 18,432 / 原站 1,194」**；线上站点库前 392 页（全部页）抽样均为图床外链。
+
+剩余 1,194 条的源图标从未进入 `prefetch-src-map`（含 3 条下载即 404 的），继续用原站直链，前端有首字图标兜底。
+
+### 两个存储后端的对应关系（重要）
+
+图床的 `builtin-icons/` 分两批存进不同后端，**同一批上传里命名规则不同**：
+
+| 后端（D1 metadata `Channel`） | 文件名形态 | 文件数 | 用途 |
+| --- | --- | --- | --- |
+| Telegram（`TelegramNew`） | `icon_<时间戳>_<随机>.png` | 7,260 | **早期**批次；库里最初的 1,579 条外链来自这批 |
+| Cloudreve（`WebDAV`） | `<sha1>.png` | 22,407 | **后期**批次（sha1 命名，免下载回填就靠它） |
+
+两者对前端完全透明（都走 `https://img-bed.ieoc.top/file/builtin-icons/...`），但**依赖不同**：
+Cloudreve 那批依赖自建 Cloudreve 实例在线，Telegram 那批依赖对应 bot/频道。任一端不可用时，对应图标会 404
+（前端回退首字图标）。抽查可用性：Cloudreve 10/10、Telegram 5/5 均 200。
+
+### 去重：现状与工具
+
+`builtin-icons/` 共 **29,667** 个文件，而按内容去重只需要 **16,536** 个：
+
+- **978 个**是「同名 sha1 文件」的重复（同一内容被上传多次，文件名即可判定，无需下载）；
+- 其余冗余藏在旧命名的 12,153 个文件里——**它们的元数据没有哈希**（`files.metadata` 只有 FileName/FileSize/Width/Height/Channel 等），
+  必须下载后自己算 sha1 才能判定。
+
+已内置只读扫描工具（不写 D1，不消耗写额度）：
+
+```bash
+# 增量扫描：给「非 sha1 命名」的文件补内容指纹，结果落 scripts/data/imgbed-content-hash.json，可反复续跑
+CF_API_TOKEN=<有 D1 读权限的 token> node scripts/imgbed-dedupe.mjs scan --conc=32 --budget=420
+
+# 出报告：按内容分组，给出可删除清单（自动排除被数据库引用的文件）
+node scripts/imgbed-dedupe.mjs report
+```
+
+产物：`scripts/data/imgbed-files.json`（图床全量清单）、`imgbed-content-hash.json`（文件 id → sha1）、
+`imgbed-dedupe-report.json`（重复组 + 可删除清单）。脚本的保留优先级是
+**被数据库引用 > sha1 命名 > 时间戳最早**，且**凡是被 `db-referenced-ids.txt` 引用的文件一律不删**
+（该清单为导出命令：`SELECT substring(icon from length('https://img-bed.ieoc.top/file/')+1) FROM daohang.builtin_sites WHERE icon LIKE 'https://img-bed.ieoc.top/%'`）。
+
+**当前进度**：扫描到 **22,714 / 29,667** 个指纹（sha1 命名的直接取文件名，其余约 5,200 个已下载算出），暂存在本地缓存里，明天续跑即可。
+
+### 明天的执行清单（按序）
+
+1. **续跑扫描**：`scan --conc=32 --budget=420`（反复执行直到「待下载 0」，约剩 7,000 个文件）；
+2. **出报告**：`report`，确认「可删除文件数」与「因库引用跳过」的数字；
+3. **执行删除**：⚠️ 需要 **D1 写额度**（UTC 零点 = 北京 08:00 重置；删除会给 `files` 与 `index_operations` 记账），
+   且删除动作会同时作用到 Cloudreve/Telegram 后端，**建议先删 20-50 个验证一轮**，确认站点图标没受影响再批量；
+4. **补完剩余图标**（可选）：1,194 条未转存的需要重新 prefetch + upload，同样受写额度约束，别和上面两步排在同一天；
+5. **顺手记一笔**：本轮还修了站点库关键词搜索（`q` 未映射到 `listBuiltinSites` 的 `qstr`，导致搜索返回全量），
+   提交 `d3b640e`，实测 `q=Amazon → 7 条`、`q=腾讯 → 80 条`。
