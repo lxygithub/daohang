@@ -284,7 +284,7 @@ export async function builtinCatCounts(env) {
 
 /** 读接口：分类/关键词过滤 + rate 排序 + 分页。q 做 name/url 前后通配 LIKE。
  *  count 与数据页合并为一次网关往返（同一短事务）。 */
-export async function listBuiltinSites(env, { cat = '', qstr = '', page = 1, pageSize = 50 }) {
+export async function listBuiltinSites(env, { cat = '', qstr = '', page = 1, pageSize = 50, withCatCounts = false }) {
   const where = []
   const params = []
   if (cat) { where.push(`s.id IN (SELECT site_id FROM ${T('builtin_site_cats')} WHERE cat = $${params.length + 1})`); params.push(cat) }
@@ -298,34 +298,39 @@ export async function listBuiltinSites(env, { cat = '', qstr = '', page = 1, pag
   const pageNo = Math.max(1, page | 0 || 1)
   const offset = (pageNo - 1) * limit
 
-  const [countRes, listRes] = await raw(env, 'read-only', [
+  // 分类用子查询 json_agg 一次带出，省掉「另查分类」的第二次网关往返。
+  // 网关单次往返约 2.5s（Worker → 隧道 → 家机），所以这里能省一半时间。
+  const statements = [
     { sql: `SELECT COUNT(*)::int AS n FROM ${T('builtin_sites')} s ${whereSql}`, params },
-    { sql: `SELECT s.id, s.name, s.url, s.icon, s.description, s.rate
+    { sql: `SELECT s.id, s.name, s.url, s.icon, s.description, s.rate,
+                   COALESCE((SELECT json_agg(c.cat) FROM ${T('builtin_site_cats')} c WHERE c.site_id = s.id), '[]'::json) AS cats
               FROM ${T('builtin_sites')} s ${whereSql}
              ORDER BY s.rate DESC, s.name LIMIT ${limit} OFFSET ${offset}`, params },
-  ])
+    // 全库总数（不受筛选影响）：顺手在同一次请求里取回，省掉调用方再查一次
+    { sql: `SELECT COUNT(*)::int AS n FROM ${T('builtin_sites')}`, params: [] },
+    // 侧栏分类角标：同样并入本次请求（原来是单独一次往返）
+    ...(withCatCounts ? [{ sql: `SELECT cat, COUNT(*)::int AS n FROM ${T('builtin_site_cats')} GROUP BY cat`, params: [] }] : []),
+  ]
+  const results = await raw(env, 'read-only', statements)
+  const [countRes, listRes, allCountRes] = results
   const total = countRes?.rows?.[0] ? Number(countRes.rows[0].n) : 0
+  const count = allCountRes?.rows?.[0] ? Number(allCountRes.rows[0].n) : total
   const items = listRes?.rows ?? []
-
-  // 批量补齐分类（第二往返）
-  let catsBy = new Map()
-  if (items.length) {
-    const ids = items.map(i => i.id)
-    const cats = await q(env, 'read-only',
-      `SELECT site_id, cat FROM ${T('builtin_site_cats')} WHERE site_id IN (${ids.map((_, i) => `$${i + 1}`).join(',')})`, ids)
-    for (const r of cats) {
-      if (!catsBy.has(r.site_id)) catsBy.set(r.site_id, [])
-      catsBy.get(r.site_id).push(r.cat)
-    }
+  const catCounts = {}
+  if (withCatCounts) {
+    for (const r of results[3]?.rows ?? []) catCounts[r.cat] = Number(r.n)
   }
   return {
     total,
+    count,
+    ...(withCatCounts ? { catCounts } : {}),
     page: pageNo,
     pageSize: limit,
     items: items.map(i => ({
       name: i.name, url: i.url, icon: i.icon || '',
       description: i.description || '', rate: i.rate || 0,
-      cats: catsBy.get(i.id) || [],
+      // json_agg 返回的可能是数组，也可能（网关序列化后）是 JSON 字符串
+      cats: Array.isArray(i.cats) ? i.cats : (typeof i.cats === 'string' ? JSON.parse(i.cats) : []),
     })),
   }
 }

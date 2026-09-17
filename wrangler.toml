@@ -23,14 +23,22 @@ directory = "dist"
 binding = "ASSETS"
 # 站点是 SPA：/login、/xyz 等都返回 index.html（Pages 原有行为）
 not_found_handling = "single-page-application"
-# Worker 先处理全部请求，内部再回退到 ASSETS（必须写在 [assets] 内，放顶层会被忽略）
-run_worker_first = true
+# 只让 API 走 Worker（必须写在 [assets] 内，放顶层会被忽略）。
+# 不能写 true：那样连静态资源也要先经过 Worker，而开了 Smart Placement 后 Worker
+# 会被放到靠近数据源（家用机）的位置，静态资源就跟着绕远——官方文档明确警告过。
+# 前端只有 /api/* 需要 Worker，其余交给边缘的静态资源层，SPA 回退由上面那行负责。
+run_worker_first = ["/api/*"]
 
 # ── 环境变量管理规则（Worker 形态）────────────────────────────
 #   * 明文变量 → 只能在本文件 [vars] 里维护，随部署生效；
 #   * 机密 → `wrangler secret put <NAME>`，或 Dashboard → Worker → Settings →
 #     Variables and Secrets；机密与 Pages 项目**不共享**，迁移时需重设。
 # 判断标准：泄露即出事的（API key、token）→ 机密；其余 → [vars]。
+
+# Smart Placement：数据源在家用机（经 Cloudflare Tunnel），让 Worker 尽量靠近数据源
+# 执行，减少「边缘 → 隧道 → 家机」往返对延迟的影响（单程约 2.5s 的那段）。
+[placement]
+mode = "smart"
 
 [vars]
 # 管理员账号（逗号分隔可多个）。这些邮箱登录后显示「用户管理」入口，可重置/禁用/删除任意用户。

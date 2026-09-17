@@ -71,6 +71,9 @@ async function load(reset = false) {
     if (cat) p.set('cat', cat)
     if (searching) p.set('q', q.value.trim())
     if (reset) p.set('withCounts', '1')
+    // 该接口允许浏览器缓存（Cloudflare 会把 max-age 改写成 zone 默认的 4 小时），
+    // 带上构建版本号，保证每次发版都能拿到新数据（导入了新站点也要发版或强刷一次）
+    p.set('v', String(__BUILD_TIME__))
     const res = await fetch('/api/builtin-sites?' + p)
     const d = await res.json()
     if (my !== seq) return // 已被更新的请求取代

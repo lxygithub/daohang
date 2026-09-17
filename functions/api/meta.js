@@ -93,6 +93,13 @@ export async function onRequest(context) {
     return json({ title: "", icon: null, error: "链接无效" });
   }
 
+  // 结果缓存 10 分钟：编辑弹窗里改一次链接可能触发多次抓取，而不论命中内置库还是
+  // 转存图床，每次都要经过网关往返（≈2.5s）；更要紧的是**重复请求会重复上传图床**。
+  const cache = caches.default;
+  const cacheKey = new Request(`https://meta-cache.internal/?u=${encodeURIComponent(normalized)}`, { method: "GET" });
+  const cached = await cache.match(cacheKey);
+  if (cached) return cached;
+
   if (isPrivateHost(new URL(normalized).hostname) && !env?.ALLOW_PRIVATE_FETCH) {
     return json({ title: "", icon: null, lan: true, reason: "内网地址需由浏览器直连获取" });
   }
@@ -131,5 +138,11 @@ export async function onRequest(context) {
   out.iconSource = iconSource;
   if (pageError) out.error = pageError;
   else if (!title && !icon) out.error = "未能从页面中提取标题或图标";
-  return json(out);
+  const res = json(out);
+  // 只在确实拿到图标时缓存（失败结果缓存会掩盖站点恢复）
+  if (icon) {
+    res.headers.set("Cache-Control", "public, max-age=600");
+    context.waitUntil(cache.put(cacheKey, res.clone()));
+  }
+  return res;
 }
