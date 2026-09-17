@@ -127,16 +127,38 @@ npm run builtin:import   # 5. 全量导入 D1（upsert 幂等，需先 re-arm �
 > `node rehost-local.mjs upload` 续跑——限流/去重/断点续传逻辑与 `icons:rehost` 完全一致，跑完 `apply`
 > 把 `builtin-final.json` 发回即可进入收尾流程。
 
-**当前进度快照（2026-09-16）**：
+**当前进度快照（2026-09-17）**：
 
-- ✅ 已完成：19,626 站点全量入库；首次 `icons:apply` + `--delta` 导入（1,578 站图标已换图床外链）；导入通道已 disarm；已转存图标 2,503 份内容已拉回本地缓存 `scripts/data/icon-cache/`（内容寻址，兼作备份与去重索引）。
-- 🔄 进行中：图标转存 ≈2,700 / 19,178 个唯一图标源，断点续传——`npm run icons:rehost` 反复跑到「待转存 0」为止。脚本已内置**全局限流**（默认并发 6、全局任意两次上传间隔 ≥150ms、遇 502/1102/429 全员指数退避冷却 2→30s），**不要再手动加 `--conc` 提速**；图床偶发 502/1102 时脚本会自动降速，无需干预。
-- 🛡️ 防重复（2026-09-16 新增）：下载后按内容 SHA-1 去重——同内容只上传一次（"秒传"复用已有外链），上传文件名确定性（`icon_<hash前缀>.<ext>`），重试/重跑不再产生新文件；实测已转存的 2,528 个文件中真正内容重复仅 25 个（1%），图床上若看到大量看似重复的图片，主要是 502 风暴期"上传成功但响应丢失→重试"产生的孤儿文件（未记录在状态文件，只能登录图床管理端清理）以及同色系/同风格 logo 的视觉相似，非脚本双写。
-- ⏳ 转存全部完成后：① `npm run icons:apply` 重新生成 builtin-final.json（当前文件为早期快照，落后于状态文件）；② re-arm（**必须用新密钥**，见下）→ `npm run builtin:import -- --delta` → 再 disarm。收尾 delta 已改为**仅图标差量模式**（只 UPDATE icon 列 = 1 行写入/站，不重写分类），约 1.6 万站 ≈ 1.6 万行，比旧模式（≈3 行/站）省约 2/3 额度。
-- ⚠️ 重试失败项：`upload` 重跑只补「从未尝试过」的源，已记录的失败项（`ok:false`）不会自动重试；如状态文件出现失败行，先剔除再跑：
-  `grep -v '"ok":false' scripts/data/rehost-state.jsonl > scripts/data/rehost-state.tmp && mv scripts/data/rehost-state.tmp scripts/data/rehost-state.jsonl`（源站 404 的永久失败项剔除后仍会重现，属预期，留着即可，apply 会回退原始直链）
+- ✅ **图标转存完成**：19,175 / 19,178 个唯一图标源已上图床（99.98%）。未上图床的 3 个源均为源数据本身损坏（`/undefined` 路径、双斜杠 404、截断文件、<50B 垃圾图），apply 时自动回退原始直链，无补传价值。
+- ✅ **icons:apply 完成**：`scripts/data/builtin-final.json` 已重新生成——19,626 站中图床外链 19,615、回退原始直链 11。
+- ✅ 去重复核：已转存图标中真正内容重复仅 25 个（≈1%），同色系/同风格 logo 的视觉相似非重复；2,503 份内容快照缓存于 `scripts/data/icon-cache/`（内容寻址，兼作备份）。
+- ⏳ **唯一未完成：D1 差量导入 19,615 行**（把 D1 站点表的 icon 字段刷成图床外链）。09-17 执行时被「账户当日 D1 写额度耗尽」阻塞（根因见下文 09-17 事故），**北京时间 08:00（UTC 零点）额度重置后一条命令收尾**：
 
-**导入密钥（re-arm / disarm）**：导入端点 `/api/builtin-sites/import` 由 `wrangler.toml [vars]` 的 `BUILTIN_IMPORT_KEY` 门禁。仓库公开，密钥只在导入窗口临时存在：导入前在该文件加回一行 `BUILTIN_IMPORT_KEY = "<openssl rand -hex 32 生成>"` 并同步写进 `scripts/data/import-key.txt`（**每次 re-arm 都必须生成新值**：2026-09-15 之前武装用的那枚密钥已随提交 619bcf0 进入公开 Git 历史，视为已泄露——`import-key.txt` 里的旧值同样作废，不可复用），推送部署后跑 `npm run builtin:import`，完成后立即删除该行再推送（disarm）。密钥暴露窗口 ≈ 导入窗口（分钟级），端点仅可写站点库两表且有行数上限。
+  ```bash
+  CLOUDFLARE_API_TOKEN=<D1:Edit权限的token> node scripts/d1-direct-import.mjs --run   # ~5-8 分钟
+  CLOUDFLARE_API_TOKEN=<...> node scripts/d1-direct-import.mjs --check               # 预检（只读，不耗写额度）
+  ```
+
+  导入完成即全量生效（当前线上仍是 09-15 的 1,578 条老外链，站点功能正常，仅图标未更新）。
+
+**转存脚本 v3（`scripts/rehost-v3.mjs`）**——断点续传 + hash 内容去重，可反复执行直至清零：
+
+| 子命令 | 作用 |
+|---|---|
+| `status` | 进度统计（已上图床/失败待重试/未处理） |
+| `backfill-hash [--conc=10]` | 从图床下载已传图标 → sha1 回填 hash 索引（跨轮去重核心，幂等） |
+| `prefetch [--budget=540] [--conc=12]` | 下载待转存源图标 → 内容寻址缓存（sha1 命名） |
+| `upload [--conc=6] [--budget=540] [--delay=0]` | hash 去重上传：同内容只传一次，其余直接复用 URL |
+| `apply` | 生成 builtin-final.json（失败项回退原始直链） |
+
+- 断点续传文件（`scripts/data/`）：`rehost-state.jsonl`（src→外链账本，**失败行重跑自动重试**，`perm:true` 永久失败自动跳过）、`prefetch-src-map.json`（src→sha1 映射）、`icon-hash-index.json`（内容指纹→外链）、`prefetch-icons/`（内容寻址本地缓存）。
+- `--budget` 为前台时间预算（秒），到点优雅收尾落盘——适配禁止后台进程的执行环境，靠反复调用推进。
+- 09-17 实跑：conc 6→12→24→32 逐级加压（图床全程无 flood，失败率 <0.7%），总耗时约 70 分钟。
+- 转存脚本矩阵：**v3**（沙箱前台分段跑，本次转存主力）｜`npm run icons:rehost`（熔断版：内置全局限流——默认并发 6、全局间隔 ≥150ms、502/1102/429 全员指数退避冷却，适合无人值守慢速跑；图床已解除限速时实测 conc=32 亦稳定）｜`build-rehost-kit.py` 本地套件（见上）。
+
+**D1 直导脚本（`scripts/d1-direct-import.mjs`）**——**当前推荐导入路径**：绕过「Pages secret 改后需重新部署才生效」的限制，直接走 D1 REST API 执行与 import API 逐字一致的 `json_each` upsert SQL（`ON CONFLICT(url)` 全字段刷新）。仅 upsert `builtin_sites` 行、不动分类关联（省 ~4 万行写额度）。需要具备 **D1:Edit** 权限的 CF API Token（经环境变量 `CLOUDFLARE_API_TOKEN` 传入，勿写进文件）。⚠️ D1 query API 单参数约 1MB 上限——脚本已按 150 行/批规避；大规模差异检查需分批拉回本地求差（脚本已内置）。
+
+**导入密钥（re-arm / disarm，备选路径）**：仅在「无 CF Token、只动手改 wrangler.toml」时使用。导入端点 `/api/builtin-sites/import` 由 `wrangler.toml [vars]` 的 `BUILTIN_IMPORT_KEY` 门禁。仓库公开，密钥只在导入窗口临时存在：导入前在该文件加回一行 `BUILTIN_IMPORT_KEY = "<openssl rand -hex 32 生成>"` 并同步写进 `scripts/data/import-key.txt`（**每次 re-arm 都必须生成新值**：2026-09-15 之前武装用的那枚密钥已随提交 619bcf0 进入公开 Git 历史，视为已泄露——`import-key.txt` 里的旧值同样作废，不可复用），推送部署后跑 `npm run builtin:import`，完成后立即删除该行再推送（disarm）。密钥暴露窗口 ≈ 导入窗口（分钟级），端点仅可写站点库两表且有行数上限。
 
 **额度注意**：D1 免费档每日 10 万行写入，**UTC 零点重置 = 北京时间早上 8 点**（不是国内零点）。行写入账目：全字段导入 ≈ 3 行/站（站点 upsert + 分类关联清插）、**仅图标差量（--delta，icons:true）= 1 行/站**；触发限额的表现：登录/注册/保存配置报 `D1_ERROR: exceeded free tier daily row write limit`，**读取不受影响**（浏览/站点库/搜索正常），次日自动恢复，无法提前解除。图标转存（rehost）不写 D1（仅上传图床；仅当 cookie 失效时注册服务账号产生 2-3 行）。
 
@@ -146,6 +168,10 @@ npm run builtin:import   # 5. 全量导入 D1（upsert 幂等，需先 re-arm �
 2. **操作纪律**：一个 UTC 日最多跑一波大批量导入；全量导入已完成、**永远不要再跑**；转存完成后那次收尾 delta 导入（仅图标模式约 1.6 万行，额度压力已大幅下降）仍建议单独挑一个新鲜的日子跑，当天不要叠加其它大批量写操作。
 
 若后续确有频繁批量写入需求：升级 Workers Paid（$5/月）可解除每日 10 万行上限；日常小量写入（登录/保存配置/日常增量）免费档完全够用。
+
+**事故记录（2026-09-17，新教训：大上传日 ≠ 导入日）**：图标转存当天下午紧接着跑导入，首批即报额度耗尽（UTC 窗口仅开 2 小时）——真凶是**转存上传本身**：图床（CloudFlare-ImgBed）每收一张图，都要向同一账户的 D1（img_d1 库）写入 `files` + `index_operations` + KV 兼容层多行，1.66 万张上传 ≈ 消耗数万行，与导入共用每日 10 万行账户级额度。**纪律补充：同一天既大批量转存又做导入必然撞墙，排期错开。**
+
+**图床端遗留清理（低优先级）**：图床上存在同内容重复文件，两个成因：①502 风暴期「上传成功但响应丢失→重试」产生的孤儿文件（从未记录在状态文件）；②09-16 第二轮约 3,764 张的上传记录随沙箱回滚丢失（URL 无从恢复），本轮重传产生同内容重复。v3 上传文件名为确定性 `{sha1}.{ext}`（图床外链形如 `{时间戳}_{sha1}.{ext}`），**图床管理端按文件名后缀排序即可筛出同 sha1 重复**：保留最新一条、删除其余。若可提供图床管理 API Token，也可脚本化对账清理。
 
 ## 七、管理员
 
