@@ -1,25 +1,29 @@
 # 部署指南
 
-本文档覆盖从零把 daohang 部署到 Cloudflare Pages 的完整流程：D1 数据库、环境变量（含 2025 年起的新管理规则）、Brevo 发信配置、管理员设置与常见问题排查。
+本文档覆盖从零把 daohang 部署到 **Cloudflare Workers**（静态资源 + Pages Functions 编译产物）的完整流程：内网 PostgreSQL（经 SQL Gateway）为主、D1 为备份、环境变量与机密、Brevo 发信配置、管理员设置与常见问题排查。
+
+> 2026-09-17 起本项目由 Pages 项目改为 Worker，原因与迁移细节见「十一、从 Pages 迁移到 Worker」。
 
 前置条件：一个 Cloudflare 账号、一个 GitHub 账号（代码仓库私有/公开均可）。
 
 ## 一、五步快速部署
 
-1. **推送代码到 GitHub**：仓库包含 `wrangler.toml`（Pages 会据此读取配置）。
-2. **创建 D1 数据库**：Cloudflare 控制台 → Storage & Databases → D1 → Create，名称建议 `daohang`。
-3. **替换 database_id**：把 `wrangler.toml` 中 `d1_databases.database_id` 换成上一步生成的 id（不加 `[[d1_databases]]` 绑定则后端无法访问数据库）。
-4. **创建 Pages 项目**：控制台 → Workers & Pages → Create → Pages → Connect to Git，选中仓库；构建命令 `npm run build`，输出目录 `dist`（`wrangler.toml` 已声明 `pages_build_output_dir`）。
-5. **配置机密并部署**：按下文「三、环境变量」添加 `ADMIN_PASSWORD` 与 `BREVO_API_KEY` 两个加密机密，然后 Deploy。
+1. **准备数据库**（内网 PostgreSQL，经 SQL Gateway）：用 owner 执行 `scripts/pg-schema.sql`（建 `daohang` schema + 表 + 给网关 ro/rw 账号授权），再用 `scripts/d1-to-pg.mjs` 导数据，细节见「十、SQL Gateway 接入」。
+2. **推送代码到 GitHub**：仓库含 `wrangler.toml`（Worker 配置：`main`、`[assets]`、`[[d1_databases]]`、`routes`）。
+3. **创建 Worker**：控制台 → Workers & Pages → Create → Connect to Git，选中仓库；Root directory 留空，Build command `npm run build`（= `vite build` + `wrangler pages functions build`），Deploy command `npx wrangler deploy`。
+4. **配置机密**：`npx wrangler secret put BREVO_API_KEY`（Brevo **API Key**，`xkeysib-` 开头）与 `npx wrangler secret put IMG_UPLOAD_TOKEN`（图床 token）。明文变量写在 `wrangler.toml` 的 `[vars]`。
+5. **绑域名**：在 `wrangler.toml` 的 `routes` 里加 `{ pattern = "<域名>/*", zone_name = "<Zone>" }`，再 `npx wrangler deploy`。用法与坑见「八、自定义域名」。
 
-部署完成后首次访问任意 API（如打开首页）会自动建表，无需手动执行迁移。
+> D1 绑定保留为迁移期备份/回退源；切换后不再写入 D1。老版本（D1 直连）的部署方式见「十一」的迁移说明。
 
-## 二、环境变量管理规则（2025 新政策）
+## 二、环境变量管理规则（Worker 形态）
 
-Pages 项目配置 `pages_build_output_dir` 后改由 `wrangler.toml` 统一管理配置，变量分两类：
+变量分两类：
 
-- **明文变量（Plaintext）**：只能写在 `wrangler.toml` 的 `[vars]` 里，git 部署时以该文件为准；仪表板中的明文变量会被忽略，也不可在仪表板新增。
-- **机密（Secrets）**：只能通过 仪表板 → Settings → Environment variables 以「加密」方式添加，或用命令 `wrangler pages secret put <NAME>`；运行时与 `[vars]` 自动合并。
+- **明文变量（Plaintext）**：写在 `wrangler.toml` 的 `[vars]` 里，随部署生效。
+- **机密（Secrets）**：`npx wrangler secret put <NAME>`，或 Dashboard → Worker → Settings → Variables and Secrets 加密添加；与 `[vars]` 运行时自动合并。
+
+> 机密**不随代码迁移**：Pages 项目与 Worker 是两个资源，Pages 上的加密变量在改成 Worker 后需要重设一遍（2026-09-17 迁移时 `BREVO_API_KEY`、`IMG_UPLOAD_TOKEN` 各重设了一次）。
 
 判断标准很简单：泄露即出事的（API key、密码）→ 机密；其余 → `[vars]`。
 
@@ -182,21 +186,40 @@ npm run builtin:import   # 5. 全量导入 D1（upsert 幂等，需先 re-arm �
 
 ## 八、自定义域名（可选）
 
-Pages 项目 → Custom domains → Set up a custom domain，按提示在域名 DNS 处添加 CNAME 记录指向 `你的项目.pages.dev`，证书自动签发。国内访问建议套一层自选优选 CDN 或使用已备案域名直连。
+Worker 用 **zone route** 绑域名，写在 `wrangler.toml`：
+
+```toml
+routes = [
+  { pattern = "daohang.ieop.top/*", zone_name = "ieop.top" },
+]
+```
+
+`npx wrangler deploy` 时生效，复用现有 DNS 解析，不需要改任何 DNS 记录，证书自动签发。
+
+两个实战坑：
+
+1. **不要用 `custom_domain = true`**：如果该主机名上已有 Pages 时代留下的 A/CNAME 记录（已代理），绑定会失败并报
+   `100117 Hostname already has externally managed DNS records`。zone route 没有这个问题。
+2. **接入 SQL Gateway 时，域名所属 Zone 必须被网关 WAF 放行**：网关的规则是
+   `(http.host eq "db-gateway.ieop.top" and not (cf.worker.upstream_zone eq "<调用方 Zone>"))`，
+   只有该 Zone 里的 Worker 子请求能通过。`daohang.ieoc.top`（`ieoc.top` Zone）就是因此必然 403，
+   已于 2026-09-17 从域名中移除；要同时提供多个域名，需在 WAF 规则的白名单里补上对应 Zone。
+
+国内访问建议套一层自选优选 CDN 或使用已备案域名直连。
 
 ## 九、常见问题（FAQ）
 
 **没收到验证码邮件？**
-按顺序排查：① 垃圾箱；② Brevo 后台 Logs 是否有发送记录与退信原因；③ 发件人是否在 Brevo Senders 验证过、与 `RESET_MAIL_FROM` 是否一致；④ 是否超出 300 封/天额度；⑤ 变量是否在 push/重新部署后才配置（需再部署一次生效）。
+按顺序排查：① 垃圾箱；② Brevo 后台 Logs 是否有发送记录与退信原因；③ 发件人是否在 Brevo Senders 验证过、与 `RESET_MAIL_FROM` 是否一致；④ 是否超出 300 封/天额度；⑤ **`BREVO_API_KEY` 是不是 `xkeysib-` 开头的 v3 API Key**——用 SMTP Key（`xsmtpsib-`）会得到 `邮件发送失败（401）`，这是 2026-09-17 实测踩到的坑。机密是即时生效的，不需要重新部署。
 
 **管理密码不对？**
-确认仪表板加密机密 `ADMIN_PASSWORD` 已添加，且添加后项目重新部署过。若两者都未配置会回退内置默认——请尽快设置并保持和仓库历史值不同。
+管理员不是独立密码，而是**用你自己的账号登录、且邮箱在 `[vars] ADMIN_EMAILS` 里**（逗号分隔可多个）；满足即出现「用户管理」入口。历史文档里的 `ADMIN_PASSWORD` 机密已无代码读取，可忽略。
 
 **接口报 500 no such table？**
-理论上不会出现（自动建表）；若手动清过库或换了数据库，访问一次首页触发 `ensureSchema`，或 `npm run db:migrate` 手动执行迁移。
+运行时不建表。若换库或清库，需在服务器以 owner 执行 `scripts/pg-schema.sql`；应用的 `ensureSchema` 只做探测，缺表时会直接抛出「数据库缺表: xxx —— 请先执行 scripts/pg-schema.sql」。
 
 **改了 `[vars]` 不生效？**
-`wrangler.toml` 的变量在部署时读取，push 一次或在控制台 Retry deploy。仪表板加密机密同样要重新部署才注入。
+`wrangler.toml` 的变量在部署时注入，改完要 `npx wrangler deploy`（或 push 触发 Workers Builds）。**机密不用**：`wrangler secret put` 后立即生效。
 
 **频繁 429？**
 登录/注册/发码有限流（isolate 内存级）。生产单人使用不会触达；本地连跑多套测试会耗尽配额，重启 wrangler 即可。
@@ -254,3 +277,62 @@ daohang Pages Functions（可信服务端）
 - 新需求先 `read-only`，确有写需求再逐点放开；表结构变更由 owner 改 `pg-schema.sql` 在服务器执行，运行时做不了 DDL（指南坑 2：`CREATE TABLE IF NOT EXISTS` 在权限校验阶段即失败）；
 - ro/rw 账号只有 `daohang` schema 内业务表的 DML 权限（含序列 USAGE），无任何 DDL/管理员权限；
 - 直连报 403 是预期（指南坑 4）；「调用方报连不上 + 网关零日志」先查客户端序列化（坑 1，已在 `gateway.js` 处理），不要先查 WAF；网关 access log 不含 `$host`，按请求行 grep（坑 3）。
+
+---
+
+## 十一、从 Pages 迁移到 Worker（2026-09-17）
+
+### 为什么必须迁
+
+网关 WAF 只放行「调用方 Worker 所属 Zone」的子请求：
+
+```
+(http.host eq "db-gateway.ieop.top" and not (cf.worker.upstream_zone eq "ieop.top"))
+```
+
+forgotIt 是部署在 `ieop.top` Zone 的 Worker，天然通过；而 daohang 原来的 **Pages Functions 不满足这个条件**，
+所有网关调用都拿到 Cloudflare 403 阻断页（页面上报 `Gateway BAD_RESPONSE; HTTP 403，响应非 JSON`）。
+改成 Worker 后与 forgotIt 同等对待，**WAF 规则一行都不用改**。
+
+### 迁移做法（代码零改动）
+
+Cloudflare 官方命令 `wrangler pages functions build` 能把 `functions/` 目录编译成**单个 Worker**
+（产物自带 `env.ASSETS.fetch(request)` 回退），所以 Functions 一行都不用重写：
+
+```bash
+npx vite build                                                    # → dist/（静态资源）
+npx wrangler pages functions build functions --outdir=functions-worker
+npx wrangler deploy
+```
+
+`wrangler.toml` 由 Pages 形态改为 Worker 形态：
+
+```diff
+-pages_build_output_dir = "dist"
++main = "functions-worker/index.js"
++
++[assets]
++directory = "dist"
++binding = "ASSETS"
++not_found_handling = "single-page-application"   # 站点是 SPA：/login、/xyz 都返回 index.html
++run_worker_first = true                          # Worker 先处理，内部再回退到 ASSETS
+```
+
+`package.json`：`build` 改为「vite build + functions 编译」两步，新增 `deploy`（= build + `wrangler deploy`），
+Workers Builds 里 Build command 填 `npm run build`、Deploy command 填 `npx wrangler deploy`。
+
+### 迁移期踩到的四个坑
+
+1. **`run_worker_first` 必须写在 `[assets]` 里**——放顶层 wrangler 只给一条 `Unexpected fields` 警告然后忽略，
+   表现为 Worker 不处理请求。
+2. **别用 `custom_domain = true` 绑已有 Pages 域名的 hostname**：报 `100117 Hostname already has externally
+   managed DNS records`。用 zone route（`{ pattern = "域名/*", zone_name = "Zone" }`）复用现有解析即可。
+3. **机密不随代码迁移**：Worker 与 Pages 是两个资源，`BREVO_API_KEY`、`IMG_UPLOAD_TOKEN` 需在新 Worker 上重设
+   （`wrangler secret put`）。Pages 上的加密变量读不出来，只能重新填。
+4. **跨 Zone 的域名接不了网关**：`daohang.ieoc.top` 属 `ieoc.top` Zone，`cf.worker.upstream_zone` 不等于
+   `ieop.top`，走网关必然 403；已于本次迁移中从域名移除。要多域名共存，得在 WAF 规则里补白名单。
+
+### 回退
+
+Pages 项目保留未删（仅剩 `<project>.pages.dev`），把域名挂回 Pages 的自定义域即可回退到旧形态；
+D1 绑定也仍在 `wrangler.toml` 中，代码里保留 D1 分支作兜底。

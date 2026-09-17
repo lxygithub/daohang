@@ -1,15 +1,36 @@
 name = "daohang"
 compatibility_date = "2025-01-01"
-pages_build_output_dir = "dist"
+# ── 2026-09-17：由 Pages 项目改为 Worker（静态资源 + Functions 编译产物）──
+# 动机：Cloudflare Pages Functions 的子请求不满足网关 WAF 的
+# `cf.worker.upstream_zone eq "ieop.top"` 条件（被 403 拦），改成 Worker 后
+# 与 forgotIt 同属 ieop.top Zone，规则原样放行，无需改 WAF/Access。
+# 入口由 `wrangler pages functions build functions --outdir=functions-worker` 生成，
+# 官方命令：把 Pages Functions 目录编译成单个 Worker（产物自带 env.ASSETS 回退）。
+main = "functions-worker/index.js"
 
-# ── Cloudflare Pages 环境变量管理规则（新政策）────────────────
-# 配置了 pages_build_output_dir 后，本项目改由 wrangler.toml 统一管理配置：
-#   * 明文变量（Plaintext）→ 只能在本文件 [vars] 里维护，Git 部署时以此为准，
-#     仪表板中旧的明文变量会被忽略/覆盖；
-#   * 机密（Secrets）→ 仍可在 Dashboard > Settings > Environment variables
-#     以「加密」方式添加，或用 `wrangler pages secret put <NAME>`；
-#     运行时两类自动合并，机密优先级不受 [vars] 影响。
-# 判断标准：泄露即出事的（API key、密码）→ 机密；其余 → [vars]。
+# 域名绑定：用 zone route 而不是 custom_domain。
+# 两个主机名上已有 Pages 时代留下的 A 记录（已代理），custom_domain 会要求
+# 先删掉这些「外部管理的 DNS 记录」（错误码 100117）并自建 CNAME；
+# zone route 直接复用现有解析，不需要任何 DNS 改动。
+# 2026-09-17：ieoc.top 已从域名中移除（该 Zone 未被网关 WAF 的
+# cf.worker.upstream_zone 条件放行，接入网关必然 403），只保留 ieop.top。
+routes = [
+  { pattern = "daohang.ieop.top/*", zone_name = "ieop.top" },
+]
+
+[assets]
+directory = "dist"
+binding = "ASSETS"
+# 站点是 SPA：/login、/xyz 等都返回 index.html（Pages 原有行为）
+not_found_handling = "single-page-application"
+# Worker 先处理全部请求，内部再回退到 ASSETS（必须写在 [assets] 内，放顶层会被忽略）
+run_worker_first = true
+
+# ── 环境变量管理规则（Worker 形态）────────────────────────────
+#   * 明文变量 → 只能在本文件 [vars] 里维护，随部署生效；
+#   * 机密 → `wrangler secret put <NAME>`，或 Dashboard → Worker → Settings →
+#     Variables and Secrets；机密与 Pages 项目**不共享**，迁移时需重设。
+# 判断标准：泄露即出事的（API key、token）→ 机密；其余 → [vars]。
 
 [vars]
 # 管理员账号（逗号分隔可多个）。这些邮箱登录后显示「用户管理」入口，可重置/禁用/删除任意用户。

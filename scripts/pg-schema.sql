@@ -60,7 +60,9 @@ CREATE TABLE IF NOT EXISTS daohang.builtin_sites (
   icon        TEXT    DEFAULT '',
   icon_src    TEXT    DEFAULT '',
   description TEXT    DEFAULT '',
-  rate        INTEGER DEFAULT 0,
+  -- BIGINT 而非 INTEGER：D1/SQLite 动态类型，线上 rate 实测最大 901001003538，
+  -- 超出 int4 上限（导入时会报 integer out of range）。
+  rate        BIGINT DEFAULT 0,
   source_id   TEXT    DEFAULT '',
   updated_at  TEXT    NOT NULL
 );

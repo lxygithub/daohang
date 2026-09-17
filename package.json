@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && wrangler pages functions build functions --outdir=functions-worker",
+    "deploy": "npm run build && wrangler deploy",
     "preview": "vite preview",
     "db:migrate": "wrangler d1 migrations apply daohang --remote",
     "db:export": "node scripts/db-export.mjs",

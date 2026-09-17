@@ -210,7 +210,7 @@ export async function upsertBuiltinSites(env, rows) {
   if (!rows?.length) return
   const SQL = `INSERT INTO ${T('builtin_sites')} (url, name, icon, icon_src, description, rate, source_id, updated_at)
      SELECT x.url, x.name, x.icon, x."iconSrc", x."description",
-            x.rate::integer, x."sourceId", x."updatedAt"
+            x.rate::bigint, x."sourceId", x."updatedAt"
        FROM jsonb_to_recordset($1::jsonb) AS x(url text, name text, icon text, "iconSrc" text, "description" text, rate text, "sourceId" text, "updatedAt" text)
      WHERE true
      ON CONFLICT (url) DO UPDATE SET
