@@ -209,3 +209,43 @@ Pages 项目 → Custom domains → Set up a custom domain，按提示在域名 
 
 **仓库公开安全吗？**
 机密（API key、密码）按规范只存在于仪表板加密变量中，`wrangler.toml` 与代码里不含任何机密；`.dev.vars` 已被 gitignore。
+
+## 十、SQL Gateway 接入（内网数据库查询）
+
+本项目可通过自建 SQL Gateway 查询内网数据库（PostgreSQL / MySQL），用于「导航站展示内网业务数据」这类需求。网关的完整协议、坑与运维见 `sql-gateway` 仓库《使用与接入指南》，本章只写 daohang 侧的现状与开通步骤。
+
+**链路与信任边界**（浏览器永远不直接接触网关）：
+
+```text
+daohang Pages Functions（可信服务端）
+  → Cloudflare WAF（只放行 ieoc.top / ieop.top 两个 Worker Zone）
+  → db-gateway.ieop.top → Tunnel → Nginx → 127.0.0.1:8787 Gateway → 内网库
+```
+
+**本仓库已就位的代码**：
+
+- `functions/lib/gateway.js` —— `gatewayQuery(env, target, mode, statements)` 客户端：BigInt 归一化（指南坑 1）、单请求 20 条语句 / 256 KiB 上限前置校验、错误保留 `error + requestId`、超时 10s；
+- `functions/api/gateway/ping.js` —— 接入验证探针（仅管理员，`POST /api/gateway/ping`）：发一条无副作用的 `SELECT 1`（read-only），返回 `durationMs / rows / requestId`；
+- `wrangler.toml [vars]`：`SQL_GATEWAY_URL`（网关地址）与 `SQL_GATEWAY_TARGET`（默认 `forgotit-postgres`，按需改）。
+
+**开通还需两步人工配置**（代码 push 不够，这两步分别在 CF 控制台与服务器上做；未完成前探针返回 502，属预期）：
+
+1. **WAF 放行 daohang 的 Zone**：`ieop.top` Zone → Security → WAF → 编辑 `db-gateway.ieop.top` 的 Block 规则表达式，把调用方 Zone 加入放行集合：
+
+   ```text
+   (http.host eq "db-gateway.ieop.top" and not (cf.worker.upstream_zone in {"ieop.top" "ieoc.top"}))
+   ```
+
+2. **服务器侧放行 target**：在 `/etc/sql-gateway/gateway.config.json` 的 `clients.forgotit-worker.targets` 中，为 daohang 实际要用的 target 补允许模式（先只给 `read-only`），然后 `sudo systemctl restart sql-gateway` 并本机 `curl http://127.0.0.1:8787/readyz` 确认。
+
+**验证三连**：
+
+- 管理员登录 daohang → 控制台/前端调 `POST /api/gateway/ping`（带同源 Cookie），返回 `ok: true` 即全链路打通；
+- 非 Worker 环境（浏览器直接开、`curl https://db-gateway.ieop.top/v1/query`）应得到 Cloudflare **403**——这是 WAF 在按设计拦截，不是故障；
+- 服务器 `grep "POST /v1/query" /var/log/nginx/access.log` 能看到 UA 为 `Go-http-client/2.0` 的记录（指南坑 3：access log 不含 `$host`，别按域名 grep）。
+
+**使用纪律**（违反会在网关/数据库侧被打回）：
+
+- 查询一律走 `gatewayQuery`，值放进 `params`（PG 用 `$1`，MySQL 用 `?`），绝不拼接用户输入；排序字段等标识符用固定白名单映射；
+- 新需求先 `read-only`，确有写需求再逐点申请 `read-write`；表结构变更走数据库 owner 的迁移流程，应用运行时做不了 DDL（指南坑 2：`CREATE TABLE IF NOT EXISTS` 在权限校验阶段即失败）；
+- 直连报 403 是预期（坑 4）；「调用方报连不上 + 网关零日志」先查客户端序列化（坑 1，本仓库已在 `gateway.js` 内处理），不要先查 WAF。

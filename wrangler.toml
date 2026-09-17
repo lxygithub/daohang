@@ -35,6 +35,13 @@ IMG_UPLOAD_API = "https://img-bed.ieoc.top/upload"
 # ADMIN_PASSWORD_SHA256 = "<sha256 hex>"
 # 未配置两者时服务端回退内置默认（与历史仓库一致），首次部署后请尽快改成机密。
 
+# SQL Gateway（内网数据库统一查询入口）。地址与 target 名均非机密，放 [vars]；
+# 调用一律经 functions/lib/gateway.js，不要散落裸 fetch。用法见 DEPLOY.md「SQL Gateway 接入」。
+# 注意：网关侧两项配置（WAF 放行 ieoc.top、服务器 targets 允许）完成之前，
+# 探针 /api/gateway/ping 返回 502 属预期，不影响站点其它功能。
+SQL_GATEWAY_URL = "https://db-gateway.ieop.top/v1/query"
+SQL_GATEWAY_TARGET = "forgotit-postgres"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "daohang"
