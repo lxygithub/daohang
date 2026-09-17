@@ -61,13 +61,11 @@ IMG_UPLOAD_API = "https://img-bed.ieoc.top/upload"
 # daohang.ieop.top 与网关同属 ieop.top Zone，WAF 表达式原样放行，无需改；
 # 服务器侧 targets 允许未完成之前，探针 /api/gateway/ping 返回 502 属预期，不影响其它功能。
 SQL_GATEWAY_URL = "https://db-gateway.ieop.top/v1/query"
-SQL_GATEWAY_TARGET = "forgotit-postgres"
+# 2026-09-17：本项目的表已独立到 daohang 库（原先寄生在 forgotit 库的 daohang schema），
+# 用独立 target 与独立 ro/rw 账号，库级隔离、可单独备份/下线。
+SQL_GATEWAY_TARGET = "daohang-postgres"
 
-# 运行时数据库已切换到内网 PostgreSQL（经 SQL Gateway，见 DEPLOY.md 第十章），
-# 此 D1 binding 仅保留作迁移期备份与回退源（回退 = 部署上一个 D1 版提交）；
-# 切换后 D1 不再被写入，回退窗口期的新注册/新保存不会回补。
-[[d1_databases]]
-binding = "DB"
-database_name = "daohang"
-database_id = "cdcd3457-9c73-4cba-8daa-f97531949ab5"
-migrations_dir = "d1"
+# 2026-09-17：D1 库已随 Pages 项目一并删除，绑定必须移除——否则 `wrangler deploy`
+# 会报 `code 10181: D1 binding 'DB' references database ... which was not found`。
+# 数据早已迁到内网 PostgreSQL（daohang 库，28,717 行），D1 无残留用途；
+# migrations/ 与 scripts/d1-*.mjs 仅作历史参考。
