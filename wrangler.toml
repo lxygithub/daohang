@@ -37,11 +37,14 @@ IMG_UPLOAD_API = "https://img-bed.ieoc.top/upload"
 
 # SQL Gateway（内网数据库统一查询入口）。地址与 target 名均非机密，放 [vars]；
 # 调用一律经 functions/lib/gateway.js，不要散落裸 fetch。用法见 DEPLOY.md「SQL Gateway 接入」。
-# 注意：网关侧两项配置（WAF 放行 ieoc.top、服务器 targets 允许）完成之前，
-# 探针 /api/gateway/ping 返回 502 属预期，不影响站点其它功能。
+# daohang.ieop.top 与网关同属 ieop.top Zone，WAF 表达式原样放行，无需改；
+# 服务器侧 targets 允许未完成之前，探针 /api/gateway/ping 返回 502 属预期，不影响其它功能。
 SQL_GATEWAY_URL = "https://db-gateway.ieop.top/v1/query"
 SQL_GATEWAY_TARGET = "forgotit-postgres"
 
+# 运行时数据库已切换到内网 PostgreSQL（经 SQL Gateway，见 DEPLOY.md 第十章），
+# 此 D1 binding 仅保留作迁移期备份与回退源（回退 = 部署上一个 D1 版提交）；
+# 切换后 D1 不再被写入，回退窗口期的新注册/新保存不会回补。
 [[d1_databases]]
 binding = "DB"
 database_name = "daohang"

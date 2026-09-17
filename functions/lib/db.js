@@ -1,81 +1,71 @@
-// Single data-access layer — ALL SQL lives here.
-// 换数据库（PostgreSQL / MySQL / Turso / 本地 SQLite）只需改这一个文件。
-// 方言约定：标准 SQLite；时间戳为 ISO-8601 TEXT，由应用层生成。
+// Single data-access layer — ALL SQL lives here.  ← PostgreSQL / SQL Gateway 版
+// 2026-09 起 daohang 数据库由 Cloudflare D1(SQLite) 迁至内网 PostgreSQL，
+// 经 functions/lib/gateway.js → db-gateway.ieop.top 访问；表集中在独立 schema `daohang`。
+// 函数签名与 D1 版完全一致，上层路由零改动。
+// 约定：时间戳为 ISO-8601 TEXT（应用层生成）——与 D1 版语义一致，LWW 字符串比较零格式漂移。
+//
+// ⚠️ 指南坑 2：应用运行时禁止 DDL。建表/授权由数据库 owner 在服务器执行
+//    scripts/pg-schema.sql；本文件的 ensureSchema 只做探测，缺表即给出明确指引。
+import { gatewayQuery } from './gateway.js'
 
-const SCHEMA_SQL = `
--- 旧版全局配置表（访客视角 / 登录播种来源），对应 d1/0001_init.sql；
--- 补进 ensureSchema 让全新 D1（新部署、fork、本地清库）无需手动跑迁移。
-CREATE TABLE IF NOT EXISTS nav_config (
-  id          INTEGER PRIMARY KEY CHECK (id = 1),
-  config_json TEXT NOT NULL,
-  updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-CREATE TABLE IF NOT EXISTS users (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  email      TEXT    NOT NULL UNIQUE,
-  pwd_hash   TEXT    NOT NULL,
-  disabled   INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT    NOT NULL
-);
-CREATE TABLE IF NOT EXISTS sessions (
-  id         INTEGER PRIMARY KEY AUTOINCREMENT,
-  user_id    INTEGER NOT NULL,
-  token_hash TEXT    NOT NULL UNIQUE,
-  created_at TEXT    NOT NULL,
-  expires_at TEXT    NOT NULL
-);
-CREATE TABLE IF NOT EXISTS user_data (
-  user_id    INTEGER NOT NULL,
-  key        TEXT    NOT NULL,
-  value      TEXT    NOT NULL,
-  updated_at TEXT    NOT NULL,
-  PRIMARY KEY (user_id, key)
-);
-CREATE TABLE IF NOT EXISTS pwd_resets (
-  email      TEXT PRIMARY KEY,
-  code_hash  TEXT    NOT NULL,
-  expires_at TEXT    NOT NULL,
-  attempts   INTEGER NOT NULL DEFAULT 0
-);
-CREATE INDEX IF NOT EXISTS idx_sessions_user   ON sessions(user_id);
-CREATE INDEX IF NOT EXISTS idx_sessions_expiry ON sessions(expires_at);
-CREATE INDEX IF NOT EXISTS idx_pwd_resets_expiry ON pwd_resets(expires_at);
--- 内置导航站点库（自维护数据集，经 /api/builtin-sites/import 导入）
-CREATE TABLE IF NOT EXISTS builtin_sites (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  url         TEXT    NOT NULL UNIQUE,
-  name        TEXT    NOT NULL,
-  icon        TEXT    DEFAULT '',
-  icon_src    TEXT    DEFAULT '',
-  description TEXT    DEFAULT '',
-  rate        INTEGER DEFAULT 0,
-  source_id   TEXT    DEFAULT '',
-  updated_at  TEXT    NOT NULL
-);
-CREATE TABLE IF NOT EXISTS builtin_site_cats (
-  site_id INTEGER NOT NULL,
-  cat     TEXT    NOT NULL,
-  PRIMARY KEY (site_id, cat)
-);
-CREATE INDEX IF NOT EXISTS idx_builtin_cats_cat ON builtin_site_cats(cat);
-`;
+const SCHEMA = 'daohang'                 // PG schema，与 ForgotIt 业务表隔离
+const T = (t) => `${SCHEMA}.${t}`        // 表引用
+const CORE_TABLES = ['users', 'sessions', 'user_data', 'pwd_resets', 'builtin_sites', 'builtin_site_cats', 'nav_config']
+
+function target(env) { return env.SQL_GATEWAY_TARGET || 'forgotit-postgres' }
+
+/** 网关查询：返回 rows 数组（results[0].rows）。多语句请用 raw()。 */
+async function q(env, mode, sql, params = []) {
+  const r = await gatewayQuery(env, target(env), mode, [{ sql, params }])
+  return r.results?.[0]?.rows ?? []
+}
+
+/** 单行或 null。 */
+async function one(env, mode, sql, params = []) {
+  return (await q(env, mode, sql, params))[0] ?? null
+}
+
+/** 多语句单请求（网关同一短事务，≤20 条）。返回每条的 rows。 */
+async function raw(env, mode, statements) {
+  const r = await gatewayQuery(env, target(env), mode, statements)
+  return r.results ?? []
+}
+
+/** 大批量语句按 20 条/请求分批执行（跨批非事务；调用方须幂等）。 */
+async function execBatch(env, mode, statements) {
+  for (let i = 0; i < statements.length; i += 20) {
+    await raw(env, mode, statements.slice(i, i + 20))
+  }
+}
+
+// 协议限制：单条语句绑定参数 + JSON 请求体 ≤256KiB。行数据导入类调用按字节对半分块。
+function chunkByBytes(rows, cap = 200 * 1024) {
+  const out = []
+  let cur = [], size = 2
+  for (const row of rows) {
+    const s = JSON.stringify(row).length + 1
+    if (size + s > cap && cur.length) { out.push(cur); cur = []; size = 2 }
+    cur.push(row); size += s
+  }
+  if (cur.length) out.push(cur)
+  return out
+}
 
 let schemaReady = null // per-isolate promise cache
 
-/** Idempotent bootstrap so git-push deploys work without running wrangler.
- *  Mirrors d1/0001/0002/0003 + in-place column migrations. */
+/** 探测 schema 就绪（不改库结构）。缺表时抛出带指引的错误。 */
 export function ensureSchema(env) {
   if (!schemaReady) {
     schemaReady = (async () => {
-      await env.DB.batch(
-        SCHEMA_SQL.split(';')
-          .map(s => s.trim())
-          .filter(Boolean)
-          .map(sql => env.DB.prepare(sql))
-      )
-      // 老库迁移：补 disabled 列（新库建表已含，报 duplicate column 属预期，静默吞掉）
-      await env.DB.prepare("ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0")
-        .run().catch(() => {})
+      const rows = await q(env, 'read-only',
+        `SELECT table_name FROM information_schema.tables WHERE table_schema = $1`, [SCHEMA])
+      const have = new Set(rows.map(r => r.table_name))
+      const missing = CORE_TABLES.filter(t => !have.has(t))
+      if (missing.length) {
+        throw new Error(
+          `数据库缺表: ${missing.join(', ')} —— 请先在服务器以数据库 owner 执行 scripts/pg-schema.sql（见 DEPLOY.md「切换到 PostgreSQL」），应用运行时无建表权限`,
+        )
+      }
     })().catch(e => { schemaReady = null; throw e })
   }
   return schemaReady
@@ -86,134 +76,125 @@ export function nowISO() { return new Date().toISOString() }
 // ---- users ----
 
 export async function getUserByEmail(env, email) {
-  return env.DB.prepare("SELECT id, email, pwd_hash, disabled, created_at FROM users WHERE email = ?")
-    .bind(email).first()
+  return one(env, 'read-only',
+    `SELECT id, email, pwd_hash, disabled, created_at FROM ${T('users')} WHERE email = $1`, [email])
 }
 
 export async function getUserById(env, id) {
-  return env.DB.prepare("SELECT id, email, pwd_hash, disabled, created_at FROM users WHERE id = ?")
-    .bind(id).first()
+  return one(env, 'read-only',
+    `SELECT id, email, pwd_hash, disabled, created_at FROM ${T('users')} WHERE id = $1`, [id])
 }
 
 /** Returns new user id. Throws on duplicate email (UNIQUE). */
 export async function createUser(env, email, pwdHash) {
-  const res = await env.DB.prepare(
-    "INSERT INTO users (email, pwd_hash, created_at) VALUES (?, ?, ?)"
-  ).bind(email, pwdHash, nowISO()).run()
-  return res.meta.last_row_id
+  const row = await one(env, 'read-write',
+    `INSERT INTO ${T('users')} (email, pwd_hash, created_at) VALUES ($1, $2, $3) RETURNING id`,
+    [email, pwdHash, nowISO()])
+  return row.id
 }
 
 // ---- sessions ----
 
 export async function createSession(env, userId, tokenHash, expiresAt) {
-  await env.DB.prepare(
-    "INSERT INTO sessions (user_id, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?)"
-  ).bind(userId, tokenHash, nowISO(), expiresAt).run()
+  await q(env, 'read-write',
+    `INSERT INTO ${T('sessions')} (user_id, token_hash, created_at, expires_at) VALUES ($1, $2, $3, $4)`,
+    [userId, tokenHash, nowISO(), expiresAt])
 }
 
 export async function getSessionByTokenHash(env, tokenHash) {
-  return env.DB.prepare(
+  return one(env, 'read-only',
     `SELECT s.id, s.expires_at, s.user_id, u.email, u.disabled
-       FROM sessions s JOIN users u ON u.id = s.user_id
-      WHERE s.token_hash = ?`
-  ).bind(tokenHash).first()
+       FROM ${T('sessions')} s JOIN ${T('users')} u ON u.id = s.user_id
+      WHERE s.token_hash = $1`, [tokenHash])
 }
 
 export async function extendSession(env, sessionId, newExpiry) {
-  await env.DB.prepare("UPDATE sessions SET expires_at = ? WHERE id = ?")
-    .bind(newExpiry, sessionId).run()
+  await q(env, 'read-write',
+    `UPDATE ${T('sessions')} SET expires_at = $1 WHERE id = $2`, [newExpiry, sessionId])
 }
 
 export async function deleteSession(env, tokenHash) {
-  await env.DB.prepare("DELETE FROM sessions WHERE token_hash = ?")
-    .bind(tokenHash).run()
+  await q(env, 'read-write', `DELETE FROM ${T('sessions')} WHERE token_hash = $1`, [tokenHash])
 }
 
 /** Opportunistic cleanup of expired rows (called on login). */
 export async function purgeExpiredSessions(env) {
-  await env.DB.prepare("DELETE FROM sessions WHERE expires_at < ?").bind(nowISO()).run()
+  await q(env, 'read-write', `DELETE FROM ${T('sessions')} WHERE expires_at < $1`, [nowISO()])
 }
 
 /** Revoke every session of the user except the given token hash (keep current device). */
 export async function deleteSessionsExcept(env, userId, keepTokenHash) {
-  await env.DB.prepare("DELETE FROM sessions WHERE user_id = ? AND token_hash != ?")
-    .bind(userId, keepTokenHash).run()
+  await q(env, 'read-write',
+    `DELETE FROM ${T('sessions')} WHERE user_id = $1 AND token_hash != $2`, [userId, keepTokenHash])
 }
 
 /** Revoke ALL sessions of the user (used after admin/reset password changes). */
 export async function deleteAllSessions(env, userId) {
-  await env.DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(userId).run()
+  await q(env, 'read-write', `DELETE FROM ${T('sessions')} WHERE user_id = $1`, [userId])
 }
 
 // ---- user_data (per-user key/value, LWW by updated_at) ----
 
 export async function getAllUserData(env, userId) {
-  const { results } = await env.DB.prepare(
-    "SELECT key, value, updated_at FROM user_data WHERE user_id = ?"
-  ).bind(userId).all()
-  return results || []
+  return q(env, 'read-only',
+    `SELECT key, value, updated_at FROM ${T('user_data')} WHERE user_id = $1`, [userId])
 }
 
 export async function getUserData(env, userId, key) {
-  return env.DB.prepare(
-    "SELECT value, updated_at FROM user_data WHERE user_id = ? AND key = ?"
-  ).bind(userId, key).first()
+  return one(env, 'read-only',
+    `SELECT value, updated_at FROM ${T('user_data')} WHERE user_id = $1 AND key = $2`, [userId, key])
 }
 
 /** Last-write-wins upsert: only writes when `updatedAt` is newer than stored. */
 export async function upsertUserData(env, userId, key, value, updatedAt) {
   const cur = await getUserData(env, userId, key)
   if (cur && cur.updated_at >= updatedAt) return { written: false, updated_at: cur.updated_at }
-  await env.DB.prepare(
-    "INSERT OR REPLACE INTO user_data (user_id, key, value, updated_at) VALUES (?, ?, ?, ?)"
-  ).bind(userId, key, value, updatedAt).run()
+  await setUserData(env, userId, key, value, updatedAt)
   return { written: true, updated_at: updatedAt }
 }
 
 /** Unconditional write (used for explicit config saves — user intent wins). */
 export async function setUserData(env, userId, key, value, updatedAt) {
-  await env.DB.prepare(
-    "INSERT OR REPLACE INTO user_data (user_id, key, value, updated_at) VALUES (?, ?, ?, ?)"
-  ).bind(userId, key, value, updatedAt).run()
+  await q(env, 'read-write',
+    `INSERT INTO ${T('user_data')} (user_id, key, value, updated_at) VALUES ($1, $2, $3, $4)
+     ON CONFLICT (user_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at`,
+    [userId, key, value, updatedAt])
 }
 
 // ---- account management ----
 
 export async function updateUserPassword(env, userId, pwdHash) {
-  await env.DB.prepare("UPDATE users SET pwd_hash = ? WHERE id = ?")
-    .bind(pwdHash, userId).run()
+  await q(env, 'read-write', `UPDATE ${T('users')} SET pwd_hash = $1 WHERE id = $2`, [pwdHash, userId])
 }
 
 /** Enable / disable a user account (0 = active, 1 = disabled). */
 export async function setUserDisabled(env, userId, disabled) {
-  await env.DB.prepare("UPDATE users SET disabled = ? WHERE id = ?")
-    .bind(disabled ? 1 : 0, userId).run()
+  await q(env, 'read-write',
+    `UPDATE ${T('users')} SET disabled = $1 WHERE id = $2`, [disabled ? 1 : 0, userId])
 }
 
-/** Atomic cascade delete — D1 batch runs as a single transaction:
- *  prefs, sessions and the user row all succeed or none do. */
+/** Atomic cascade delete — one gateway request runs all three DELETEs in a
+ *  single short transaction: prefs, sessions and the user row all succeed or none do. */
 export async function deleteUserCascade(env, userId) {
-  await env.DB.batch([
-    env.DB.prepare("DELETE FROM user_data WHERE user_id = ?").bind(userId),
-    env.DB.prepare("DELETE FROM sessions WHERE user_id = ?").bind(userId),
-    env.DB.prepare("DELETE FROM users WHERE id = ?").bind(userId),
+  await raw(env, 'read-write', [
+    { sql: `DELETE FROM ${T('user_data')} WHERE user_id = $1`, params: [userId] },
+    { sql: `DELETE FROM ${T('sessions')} WHERE user_id = $1`, params: [userId] },
+    { sql: `DELETE FROM ${T('users')} WHERE id = $1`, params: [userId] },
   ])
 }
 
 /** Admin listing — optional email substring search, counts via subqueries,
  *  never exposes pwd_hash. */
-export async function listUsersWithStats(env, q = '') {
-  const raw = String(q || '').trim().toLowerCase()
-  const like = '%' + raw.replace(/[\\%_]/g, ch => '\\' + ch) + '%'
-  const { results } = await env.DB.prepare(
+export async function listUsersWithStats(env, qstr = '') {
+  const rawQ = String(qstr || '').trim().toLowerCase()
+  const like = '%' + rawQ.replace(/[\\%_]/g, ch => '\\' + ch) + '%'
+  return q(env, 'read-only',
     `SELECT u.id, u.email, u.created_at, u.disabled,
-            (SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id) AS sessions,
-            (SELECT COUNT(*) FROM user_data d WHERE d.user_id = u.id) AS prefs
-       FROM users u
-      WHERE u.email LIKE ? ESCAPE '\\'
-      ORDER BY u.id`
-  ).bind(like).all()
-  return results || []
+            (SELECT COUNT(*) FROM ${T('sessions')} s WHERE s.user_id = u.id) AS sessions,
+            (SELECT COUNT(*) FROM ${T('user_data')} d WHERE d.user_id = u.id) AS prefs
+       FROM ${T('users')} u
+      WHERE u.email LIKE $1 ESCAPE '\\'
+      ORDER BY u.id`, [like])
 }
 
 // ---- builtin sites（内置导航站点库）----
@@ -223,91 +204,96 @@ export const BUILTIN_CATS = [
   'life', 'games', 'education', 'tech', 'finance', 'read', 'others',
 ]
 
-/** 批量 upsert：一行 JSON 数组经 json_each 展开写入（单语句 1 个绑定参数，
- *  绕开 D1 每语句 100 参数限制）。url 冲突时更新内容字段。 */
+/** 批量 upsert：行数组经 jsonb_to_recordset 展开写入；url 冲突时更新内容字段。
+ *  超过请求体上限自动分块（跨块非事务，upsert 幂等）。 */
 export async function upsertBuiltinSites(env, rows) {
-  await env.DB.prepare(
-    `INSERT INTO builtin_sites (url, name, icon, icon_src, description, rate, source_id, updated_at)
-     SELECT je.value->>'$.url', je.value->>'$.name', je.value->>'$.icon',
-            je.value->>'$.iconSrc', je.value->>'$.description',
-            CAST(je.value->>'$.rate' AS INTEGER), je.value->>'$.sourceId', je.value->>'$.updatedAt'
-       FROM json_each(?) AS je
+  if (!rows?.length) return
+  const SQL = `INSERT INTO ${T('builtin_sites')} (url, name, icon, icon_src, description, rate, source_id, updated_at)
+     SELECT x.url, x.name, x.icon, x."iconSrc", x."description",
+            x.rate::integer, x."sourceId", x."updatedAt"
+       FROM jsonb_to_recordset($1::jsonb) AS x(url text, name text, icon text, "iconSrc" text, "description" text, rate text, "sourceId" text, "updatedAt" text)
      WHERE true
-     ON CONFLICT(url) DO UPDATE SET
-       name = excluded.name, icon = excluded.icon, icon_src = excluded.icon_src,
-       description = excluded.description, rate = excluded.rate,
-       source_id = excluded.source_id, updated_at = excluded.updated_at`
-  ).bind(JSON.stringify(rows)).run()
+     ON CONFLICT (url) DO UPDATE SET
+       name = EXCLUDED.name, icon = EXCLUDED.icon, icon_src = EXCLUDED.icon_src,
+       description = EXCLUDED.description, rate = EXCLUDED.rate,
+       source_id = EXCLUDED.source_id, updated_at = EXCLUDED.updated_at`
+  for (const chunk of chunkByBytes(rows)) {
+    await q(env, 'read-write', SQL, [JSON.stringify(chunk)])
+  }
 }
 
 /** 同步分类关联：先清后插，仅对本次批次涉及的 url。 */
 export async function replaceBuiltinCats(env, pairs) {
-  const urls = [...new Set(pairs.map(p => p.url))]
-  await env.DB.prepare("DELETE FROM builtin_site_cats WHERE site_id IN (SELECT id FROM builtin_sites WHERE url IN (SELECT je.value FROM json_each(?) AS je))")
-    .bind(JSON.stringify(urls)).run()
-  await env.DB.prepare(
-    `INSERT OR IGNORE INTO builtin_site_cats (site_id, cat)
-     SELECT s.id, je.value->>'$.cat' FROM json_each(?) je
-       JOIN builtin_sites s ON s.url = je.value->>'$.url'`
-  ).bind(JSON.stringify(pairs)).run()
+  if (!pairs?.length) return
+  for (const chunk of chunkByBytes(pairs)) {
+    await raw(env, 'read-write', [
+      { sql: `DELETE FROM ${T('builtin_site_cats')} WHERE site_id IN (
+                SELECT id FROM ${T('builtin_sites')} WHERE url IN (SELECT x FROM jsonb_array_elements_text($1::jsonb)))`,
+        params: [JSON.stringify(chunk.map(p => p.url))] },
+      { sql: `INSERT INTO ${T('builtin_site_cats')} (site_id, cat)
+                SELECT s.id, x.cat FROM jsonb_to_recordset($1::jsonb) AS x(url text, cat text)
+                  JOIN ${T('builtin_sites')} s ON s.url = x.url
+                ON CONFLICT DO NOTHING`,
+        params: [JSON.stringify(chunk)] },
+    ])
+  }
 }
 
-/** 仅更新图标列（图标外链差量升级专用）：每站 1 行写入，不触碰分类关联，
- *  较全字段 upsert（站点行 + 分类删插 ≈ 3 行/站）省约 2/3 写额度。
+/** 仅更新图标列（图标外链差量升级专用）：每站 1 行写入，不触碰分类关联。
  *  rows: [{ url, icon, updatedAt }]；url 不存在时该语句写 0 行，天然幂等。 */
 export async function updateBuiltinIcons(env, rows) {
-  if (!rows.length) return
-  const stmts = rows.map(r =>
-    env.DB.prepare("UPDATE builtin_sites SET icon = ?2, updated_at = ?3 WHERE url = ?1")
-      .bind(r.url, r.icon, r.updatedAt)
-  )
-  await env.DB.batch(stmts)
+  if (!rows?.length) return
+  await execBatch(env, 'read-write',
+    rows.map(r => ({
+      sql: `UPDATE ${T('builtin_sites')} SET icon = $2, updated_at = $3 WHERE url = $1`,
+      params: [r.url, r.icon, r.updatedAt],
+    })))
 }
 
 export async function countBuiltinSites(env) {
-  const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM builtin_sites").first()
-  return row ? row.n : 0
+  const row = await one(env, 'read-only', `SELECT COUNT(*)::int AS n FROM ${T('builtin_sites')}`)
+  return row ? Number(row.n) : 0
 }
 
-/** 读接口：分类/关键词过滤 + rate 排序 + 分页。q 做 name/url 前后通配 LIKE。 */
-export async function listBuiltinSites(env, { cat = '', q = '', page = 1, pageSize = 50 }) {
+/** 读接口：分类/关键词过滤 + rate 排序 + 分页。q 做 name/url 前后通配 LIKE。
+ *  count 与数据页合并为一次网关往返（同一短事务）。 */
+export async function listBuiltinSites(env, { cat = '', qstr = '', page = 1, pageSize = 50 }) {
   const where = []
   const params = []
-  if (cat) { where.push('s.id IN (SELECT site_id FROM builtin_site_cats WHERE cat = ?)'); params.push(cat) }
-  if (q) {
-    const like = '%' + String(q).replace(/[\\%_]/g, ch => '\\' + ch) + '%'
-    where.push('(s.name LIKE ? ESCAPE \'\\\' OR s.url LIKE ? ESCAPE \'\\\')')
+  if (cat) { where.push(`s.id IN (SELECT site_id FROM ${T('builtin_site_cats')} WHERE cat = $${params.length + 1})`); params.push(cat) }
+  if (qstr) {
+    const like = '%' + String(qstr).replace(/[\\%_]/g, ch => '\\' + ch) + '%'
+    where.push(`(s.name LIKE $${params.length + 1} ESCAPE '\\' OR s.url LIKE $${params.length + 2} ESCAPE '\\')`)
     params.push(like, like)
   }
   const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : ''
-  const countRow = await env.DB.prepare(
-    `SELECT COUNT(*) AS n FROM builtin_sites s ${whereSql}`
-  ).bind(...params).first()
-  const total = countRow ? countRow.n : 0
   const limit = Math.min(100, Math.max(1, pageSize | 0 || 50))
-  const offset = (Math.max(1, page | 0 || 1) - 1) * limit
-  const { results } = await env.DB.prepare(
-    `SELECT s.id, s.name, s.url, s.icon, s.description, s.rate
-       FROM builtin_sites s ${whereSql}
-      ORDER BY s.rate DESC, s.name LIMIT ${limit} OFFSET ${offset}`
-  ).bind(...params).all()
-  const items = results || []
-  // 批量补齐分类
+  const pageNo = Math.max(1, page | 0 || 1)
+  const offset = (pageNo - 1) * limit
+
+  const [countRes, listRes] = await raw(env, 'read-only', [
+    { sql: `SELECT COUNT(*)::int AS n FROM ${T('builtin_sites')} s ${whereSql}`, params },
+    { sql: `SELECT s.id, s.name, s.url, s.icon, s.description, s.rate
+              FROM ${T('builtin_sites')} s ${whereSql}
+             ORDER BY s.rate DESC, s.name LIMIT ${limit} OFFSET ${offset}`, params },
+  ])
+  const total = countRes?.rows?.[0] ? Number(countRes.rows[0].n) : 0
+  const items = listRes?.rows ?? []
+
+  // 批量补齐分类（第二往返）
   let catsBy = new Map()
   if (items.length) {
     const ids = items.map(i => i.id)
-    const { results: catRows } = await env.DB.prepare(
-      `SELECT site_id, cat FROM builtin_site_cats WHERE site_id IN (${ids.map(() => '?').join(',')})`
-    ).bind(...ids).all()
-    catsBy = new Map()
-    for (const r of catRows || []) {
+    const cats = await q(env, 'read-only',
+      `SELECT site_id, cat FROM ${T('builtin_site_cats')} WHERE site_id IN (${ids.map((_, i) => `$${i + 1}`).join(',')})`, ids)
+    for (const r of cats) {
       if (!catsBy.has(r.site_id)) catsBy.set(r.site_id, [])
       catsBy.get(r.site_id).push(r.cat)
     }
   }
   return {
     total,
-    page: Math.max(1, page | 0 || 1),
+    page: pageNo,
     pageSize: limit,
     items: items.map(i => ({
       name: i.name, url: i.url, icon: i.icon || '',
@@ -320,24 +306,25 @@ export async function listBuiltinSites(env, { cat = '', q = '', page = 1, pageSi
 // ---- password resets (email verification codes) ----
 
 export async function upsertPwdReset(env, email, codeHash, expiresAt) {
-  await env.DB.prepare(
-    "INSERT OR REPLACE INTO pwd_resets (email, code_hash, expires_at, attempts) VALUES (?, ?, ?, 0)"
-  ).bind(email, codeHash, expiresAt).run()
+  await q(env, 'read-write',
+    `INSERT INTO ${T('pwd_resets')} (email, code_hash, expires_at, attempts) VALUES ($1, $2, $3, 0)
+     ON CONFLICT (email) DO UPDATE SET code_hash = EXCLUDED.code_hash, expires_at = EXCLUDED.expires_at, attempts = 0`,
+    [email, codeHash, expiresAt])
 }
 
 export async function getPwdReset(env, email) {
-  return env.DB.prepare("SELECT email, code_hash, expires_at, attempts FROM pwd_resets WHERE email = ?")
-    .bind(email).first()
+  return one(env, 'read-only',
+    `SELECT email, code_hash, expires_at, attempts FROM ${T('pwd_resets')} WHERE email = $1`, [email])
 }
 
 export async function bumpPwdResetAttempts(env, email, attempts) {
-  await env.DB.prepare("UPDATE pwd_resets SET attempts = ? WHERE email = ?").bind(attempts, email).run()
+  await q(env, 'read-write', `UPDATE ${T('pwd_resets')} SET attempts = $1 WHERE email = $2`, [attempts, email])
 }
 
 export async function deletePwdReset(env, email) {
-  await env.DB.prepare("DELETE FROM pwd_resets WHERE email = ?").bind(email).run()
+  await q(env, 'read-write', `DELETE FROM ${T('pwd_resets')} WHERE email = $1`, [email])
 }
 
 export async function purgeExpiredPwdResets(env) {
-  await env.DB.prepare("DELETE FROM pwd_resets WHERE expires_at < ?").bind(nowISO()).run()
+  await q(env, 'read-write', `DELETE FROM ${T('pwd_resets')} WHERE expires_at < $1`, [nowISO()])
 }

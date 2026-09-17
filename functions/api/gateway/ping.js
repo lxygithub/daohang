@@ -1,7 +1,7 @@
 // POST /api/gateway/ping — SQL Gateway 接入验证（仅管理员）。
 // 对应指南「接入新的可信项目」第 5 步：从 Worker 发起一条无副作用的 SELECT 1。
-// 打通前调用会得到 502 + 原始错误（403=WAF 未放行 ieoc.top / 400=网关未允许该
-// target / UNREACHABLE=Tunnel 或网关未起），按 DEPLOY.md「SQL Gateway 接入」排障。
+// 打通前调用会得到 502 + 原始错误（403=WAF 未放行 / DATABASE_QUERY_FAILED=网关未允许
+// 该 target 或缺表 / UNREACHABLE=Tunnel 或网关未起），按 DEPLOY.md「SQL Gateway 接入」排障。
 import { ensureSchema } from '../../lib/db.js'
 import { requireAdmin, sessionCookie, sameOrigin, json } from '../../lib/auth.js'
 import { gatewayQuery } from '../../lib/gateway.js'

@@ -210,42 +210,47 @@ Pages 项目 → Custom domains → Set up a custom domain，按提示在域名 
 **仓库公开安全吗？**
 机密（API key、密码）按规范只存在于仪表板加密变量中，`wrangler.toml` 与代码里不含任何机密；`.dev.vars` 已被 gitignore。
 
-## 十、SQL Gateway 接入（内网数据库查询）
 
-本项目可通过自建 SQL Gateway 查询内网数据库（PostgreSQL / MySQL），用于「导航站展示内网业务数据」这类需求。网关的完整协议、坑与运维见 `sql-gateway` 仓库《使用与接入指南》，本章只写 daohang 侧的现状与开通步骤。
+## 十、SQL Gateway 接入与数据库切换 PostgreSQL
 
-**链路与信任边界**（浏览器永远不直接接触网关）：
+2026-09-17 起 daohang 运行时数据库从 Cloudflare D1（SQLite 方言、免费档 10 万行写入/日限制）切换到内网 PostgreSQL，经自建 SQL Gateway（`db-gateway.ieop.top`）访问。数据层 `functions/lib/db.js` 保持函数签名不变、内部重写为 PG 方言（`$n` 占位符 / `ON CONFLICT` / `jsonb_to_recordset`），上层路由零改动；网关的完整协议与坑见 `sql-gateway` 仓库《使用与接入指南》。
+
+**链路与信任边界**（浏览器永远不直接接触网关；`daohang.ieop.top` 与网关同属 `ieop.top` Zone，WAF 表达式 `(http.host eq "db-gateway.ieop.top" and not (cf.worker.upstream_zone eq "ieop.top"))` 原样放行，**无需修改**）：
 
 ```text
 daohang Pages Functions（可信服务端）
-  → Cloudflare WAF（只放行 ieoc.top / ieop.top 两个 Worker Zone）
-  → db-gateway.ieop.top → Tunnel → Nginx → 127.0.0.1:8787 Gateway → 内网库
+  → Cloudflare WAF（放行 ieop.top Zone 的 Worker 子请求）
+  → db-gateway.ieop.top → Tunnel → Nginx → 127.0.0.1:8787 Gateway → 内网 PostgreSQL
 ```
 
 **本仓库已就位的代码**：
 
-- `functions/lib/gateway.js` —— `gatewayQuery(env, target, mode, statements)` 客户端：BigInt 归一化（指南坑 1）、单请求 20 条语句 / 256 KiB 上限前置校验、错误保留 `error + requestId`、超时 10s；
-- `functions/api/gateway/ping.js` —— 接入验证探针（仅管理员，`POST /api/gateway/ping`）：发一条无副作用的 `SELECT 1`（read-only），返回 `durationMs / rows / requestId`；
-- `wrangler.toml [vars]`：`SQL_GATEWAY_URL`（网关地址）与 `SQL_GATEWAY_TARGET`（默认 `forgotit-postgres`，按需改）。
+- `functions/lib/gateway.js` —— `gatewayQuery()` 客户端：BigInt 归一化（指南坑 1）、单请求 20 条语句 / 256 KiB 上限前置校验、错误保留 `error + requestId`、超时 10s；
+- `functions/lib/db.js` —— 全部数据访问改为经网关的 PG 版；`ensureSchema` 改为探测（应用运行时无 DDL 权限，缺表即报错并指向 `scripts/pg-schema.sql`）；读函数走网关 `read-only`、写函数走 `read-write`；`listBuiltinSites` 的 count+list 合并单次往返，级联删除 3 条语句同请求同事务；
+- `functions/api/gateway/ping.js` —— 接入验证探针（仅管理员，`POST /api/gateway/ping`）：`SELECT 1`（read-only），返回 `durationMs / rows / requestId`；
+- `scripts/pg-schema.sql` —— 服务器侧建表 + ro/rw 授权 DDL（owner 执行，幂等）；
+- `scripts/d1-to-pg.mjs` —— D1 全表只读导出 → 生成 psql 数据导入 SQL（2026-09-17 快照：nav_config 1 / users 18 / sessions 22 / user_data 10 / pwd_resets 0 / builtin_sites 19,626 / builtin_site_cats 9,040）；
+- `scripts/test-db-pg.mjs`、`scripts/test-gateway.mjs` —— mock 单测 26 项（零网络）。
 
-**开通还需两步人工配置**（代码 push 不够，这两步分别在 CF 控制台与服务器上做；未完成前探针返回 502，属预期）：
+**开通步骤（顺序不能反）**：
 
-1. **WAF 放行 daohang 的 Zone**：`ieop.top` Zone → Security → WAF → 编辑 `db-gateway.ieop.top` 的 Block 规则表达式，把调用方 Zone 加入放行集合：
-
-   ```text
-   (http.host eq "db-gateway.ieop.top" and not (cf.worker.upstream_zone in {"ieop.top" "ieoc.top"}))
+1. **服务器建库**：把 `scripts/pg-schema.sql` 里的 `__RO__`/`__RW__` 替换为 `/etc/sql-gateway/gateway.env` 中 forgotit-postgres 的只读/读写账号名，以 owner 身份在 forgotit-postgres 所指数据库执行：
+   ```bash
+   sed -i 's/__RO__/forgotit_ro/g; s/__RW__/forgotit_rw/g' pg-schema.sql
+   sudo -u postgres psql -d <forgotit-postgres 所指库> -f pg-schema.sql
    ```
-
-2. **服务器侧放行 target**：在 `/etc/sql-gateway/gateway.config.json` 的 `clients.forgotit-worker.targets` 中，为 daohang 实际要用的 target 补允许模式（先只给 `read-only`），然后 `sudo systemctl restart sql-gateway` 并本机 `curl http://127.0.0.1:8787/readyz` 确认。
-
-**验证三连**：
-
-- 管理员登录 daohang → 控制台/前端调 `POST /api/gateway/ping`（带同源 Cookie），返回 `ok: true` 即全链路打通；
-- 非 Worker 环境（浏览器直接开、`curl https://db-gateway.ieop.top/v1/query`）应得到 Cloudflare **403**——这是 WAF 在按设计拦截，不是故障；
-- 服务器 `grep "POST /v1/query" /var/log/nginx/access.log` 能看到 UA 为 `Go-http-client/2.0` 的记录（指南坑 3：access log 不含 `$host`，别按域名 grep）。
+2. **搬迁数据**：`backups/daohang-pg-data.sql`（或重跑 `CLOUDFLARE_API_TOKEN=xxx node scripts/d1-to-pg.mjs` 取最新）传到服务器执行：
+   ```bash
+   psql -d <同一库> -f daohang-pg-data.sql
+   ```
+   幂等（`ON CONFLICT DO NOTHING`，重复执行只跳过已存在行）；导入后自动 `setval` 回拨三张 identity 表的序列。
+3. **网关侧放行 target**：确认 `/etc/sql-gateway/gateway.config.json` 的 `clients.forgotit-worker.targets` 含 `"forgotit-postgres": ["read-only", "read-write"]`（缺则补），`sudo systemctl restart sql-gateway`，本机 `curl http://127.0.0.1:8787/readyz` 确认。
+4. **验证探针**：管理员登录 daohang → `POST /api/gateway/ping`（带同源 Cookie）返回 `ok: true` 即全链路通；非 Worker 环境（浏览器直开、curl）得到 Cloudflare 403 是 WAF 在按设计拦截，不是故障。
+5. **切换代码**：以上三步全绿后再部署本次 push 的 PG 版代码。部署后 D1 不再被写入，保留作回退源（回退 = 部署上一个 D1 版提交；窗口期的新注册/新保存不会回补，属已知代价）。
 
 **使用纪律**（违反会在网关/数据库侧被打回）：
 
-- 查询一律走 `gatewayQuery`，值放进 `params`（PG 用 `$1`，MySQL 用 `?`），绝不拼接用户输入；排序字段等标识符用固定白名单映射；
-- 新需求先 `read-only`，确有写需求再逐点申请 `read-write`；表结构变更走数据库 owner 的迁移流程，应用运行时做不了 DDL（指南坑 2：`CREATE TABLE IF NOT EXISTS` 在权限校验阶段即失败）；
-- 直连报 403 是预期（坑 4）；「调用方报连不上 + 网关零日志」先查客户端序列化（坑 1，本仓库已在 `gateway.js` 内处理），不要先查 WAF。
+- 查询一律走 `gatewayQuery`，值放进 `params`（PG 用 `$1`），绝不拼接用户输入；排序字段等标识符用固定白名单映射；
+- 新需求先 `read-only`，确有写需求再逐点放开；表结构变更由 owner 改 `pg-schema.sql` 在服务器执行，运行时做不了 DDL（指南坑 2：`CREATE TABLE IF NOT EXISTS` 在权限校验阶段即失败）；
+- ro/rw 账号只有 `daohang` schema 内业务表的 DML 权限（含序列 USAGE），无任何 DDL/管理员权限；
+- 直连报 403 是预期（指南坑 4）；「调用方报连不上 + 网关零日志」先查客户端序列化（坑 1，已在 `gateway.js` 处理），不要先查 WAF；网关 access log 不含 `$host`，按请求行 grep（坑 3）。
