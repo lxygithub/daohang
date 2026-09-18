@@ -20,7 +20,7 @@ import AccountModal from './components/AccountModal.vue'
 import AdminModal from './components/AdminModal.vue'
 import Toast from './components/Toast.vue'
 import {
-  authed, userEmail, isAdmin, checkAuth, pullAndMerge, logout as syncLogout,
+  authed, authChecked, userEmail, isAdmin, checkAuth, pullAndMerge, logout as syncLogout,
   bindPrefEvents,
 } from './composables/sync'
 const buildTime = __BUILD_TIME__
@@ -739,15 +739,18 @@ onUnmounted(() => {
       </form>
     </section>
 
-    <div v-if="loading" class="state-wrap">
+    <!-- authed 初始为 false 只表示「还没问过服务端」，不能当成未登录来渲染。
+         否则登录状态下刷新会先闪一下「请登录…」再跳回来（鉴权那趟网关往返 1～2s）。
+         有本地缓存就直接出网格（缓存本来就是给首屏秒开用的），没缓存才转圈等鉴权。 -->
+    <div v-if="loading || (!authChecked && !config)" class="state-wrap">
       <div class="spinner"></div>
       <div>正在加载…</div>
     </div>
-    <div v-else-if="!authed" class="state-wrap">
+    <div v-else-if="authChecked && !authed" class="state-wrap">
       <div>请登录后查看并同步你的导航数据</div>
       <button type="button" class="btn-text primary" @click="showAuthModal = true">登录 / 注册</button>
     </div>
-    <div v-else-if="!config" class="state-wrap">
+    <div v-else-if="authChecked && !config" class="state-wrap">
       <div>加载失败，请刷新重试</div>
     </div>
     <NavGrid
@@ -832,13 +835,13 @@ onUnmounted(() => {
               <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
             </svg>
           </button>
-          <button v-if="!authed" class="icon-btn fab-item" title="登录 / 注册" @click="runFabAction(() => { showAuthModal = true })">
+          <button v-if="authChecked && !authed" class="icon-btn fab-item" title="登录 / 注册" @click="runFabAction(() => { showAuthModal = true })">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
               <circle cx="12" cy="7" r="4"/>
             </svg>
           </button>
-          <button v-else class="icon-btn fab-item fab-user-dot" :title="userEmail" @click="runFabAction(() => { userMenuOpen = !userMenuOpen })">
+          <button v-else-if="authed" class="icon-btn fab-item fab-user-dot" :title="userEmail" @click="runFabAction(() => { userMenuOpen = !userMenuOpen })">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
               <circle cx="12" cy="7" r="4"/>

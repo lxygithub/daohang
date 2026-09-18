@@ -13,6 +13,11 @@ import { ref } from 'vue'
 import { applyFont } from './usePrefs'
 
 export const authed = ref(false)
+// 鉴权状态是否已经确认（/api/auth/me 有结果）。
+// 初始 authed=false 只代表「还不知道」，不能当成「未登录」——否则冷启动时会先闪一下
+// 未登录提示再跳回来（网关在后面，这一次往返能到 1～2s）。所有「未登录」的 UI 都要
+// 同时判断 authChecked，见 App.vue。
+export const authChecked = ref(false)
 export const userEmail = ref('')
 export const isAdmin = ref(false)
 
@@ -162,7 +167,9 @@ export async function checkAuth() {
       userEmail.value = ''
       isAdmin.value = false
     }
-  } catch { authed.value = false }
+  } catch { authed.value = false } finally {
+    authChecked.value = true
+  }
   return authed.value
 }
 
