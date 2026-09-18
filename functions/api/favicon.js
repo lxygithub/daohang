@@ -1,5 +1,6 @@
 // Shared page-fetching + favicon resolution logic.
 // Exported helpers are reused by meta.js (auto title + icon).
+import { rehostIcon } from "../lib/rehost.js";
 
 const UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
@@ -162,9 +163,24 @@ const FALLBACK_PATHS = [
   "/images/favicon.ico",
 ];
 
+// 公共图标服务：只在「站点自己一点图标都不给」时兜底（整站 403 反爬、SPA 不带 <link rel=icon>）。
+// 两者都对不存在的域名返回 404（实测），所以不会把通用地球图当成果命中。
+//
+// ⚠️ 这两个服务跑在境外，产出的链接在国内浏览器里打不开（2026-09-17 实测均超时）。
+// 因此**绝不能把它们的链接交给客户端**：调用方必须先转存到自建图床（见 lib/rehost.js）。
+// 2026-09-18 之前这里整个删掉过一次，是因为当年直接把链接存进了配置；现在有转存环节，
+// 拿它们当「输入」是安全的——ChatGPT / openai.com 这类整站 403 的站点就靠这一步救回来。
+const ICON_SERVICES = [
+  { id: "duckduckgo", url: (host) => `https://icons.duckduckgo.com/ip3/${host}.ico` },
+  { id: "google-s2", url: (host) => `https://www.google.com/s2/favicons?domain=${host}&sz=128` },
+];
+
 // Resolve the best icon for a site. `preFetched` = result of fetchHtml() to
 // avoid a second request when the caller already downloaded the page.
-export async function findIcon(siteUrl, preFetched = null) {
+// 返回 { url, kind, service? }：kind = "site"（站点自己的图标）| "service"（公共图标服务）；
+// 找不到返回 null。opts.services = false 时不查公共服务（给「直接把 URL 交给客户端」的调用方用）。
+export async function findIcon(siteUrl, preFetched = null, opts = {}) {
+  const useServices = opts.services !== false;
   let base = preFetched?.finalUrl || siteUrl;
   let candidates = [];
   try {
@@ -192,19 +208,28 @@ export async function findIcon(siteUrl, preFetched = null) {
       abs.map((u) => (/^data:image\//i.test(u) ? Promise.resolve(u) : probeImage(u)))
     );
     const hit = checked.find(Boolean);
-    if (hit) return hit;
+    if (hit) return { url: hit, kind: "site" };
   }
 
   // 常见路径并发探测（最坏耗时从 7×2.5s 串行压到 ~2.5s）。
   const pathProbes = FALLBACK_PATHS.map((p) => {
     try { return probeImage(new URL(p, base).href); } catch { return Promise.resolve(null); }
   });
-  // 不再使用第三方公共图标服务。原因：这段代码跑在 Cloudflare 边缘（境外机房），
-  // 那里能连通 google/s2 与 icons.duckduckgo.com，但它产出的链接在国内浏览器里打不开——
-  // 2026-09-17 实测两者在国内均超时，等于把图标换成一个坏链接（用户首页多格出现破图）。
-  // 现在的图标优先级：内置站点库的图床外链（见 meta.js）→ 站点自身 favicon → 前端首字母回退。
   const results = await Promise.all(pathProbes);
-  return results.find(Boolean) || null;
+  const siteHit = results.find(Boolean);
+  if (siteHit) return { url: siteHit, kind: "site" };
+
+  // 站点自己给不出 → 公共图标服务兜底（结果必须由调用方转存，见文件头的说明）
+  if (!useServices) return null;
+  let host = "";
+  try { host = new URL(base).hostname; } catch { return null; }
+  if (!host) return null;
+  const serviceHits = await Promise.all(
+    ICON_SERVICES.map(async (s) => ((await probeImage(s.url(host), 8000)) ? { ...s, hit: true } : null))
+  );
+  const svc = serviceHits.find(Boolean);
+  if (!svc) return null;
+  return { url: svc.url(host), kind: "service", service: svc.id };
 }
 
 export async function onRequest(context) {
@@ -228,9 +253,15 @@ export async function onRequest(context) {
   }
 
   try {
-    const icon = await findIcon(normalized);
-    if (icon) return json({ found: true, url: icon });
-    return json({ found: false, reason: "no icon found" });
+    const found = await findIcon(normalized);
+    if (!found) return json({ found: false, reason: "no icon found" });
+    // 公共图标服务的链接国内打不开，必须转存成图床外链再返回；转存失败就当作没找到
+    if (found.kind === "service") {
+      const hosted = await rehostIcon(env, found.url);
+      if (!hosted) return json({ found: false, reason: `站点不给图标，公共图标服务（${found.service}）转存失败` });
+      return json({ found: true, url: hosted, source: found.service });
+    }
+    return json({ found: true, url: found.url, source: "site" });
   } catch (e) {
     return json({ found: false, reason: e.message });
   }

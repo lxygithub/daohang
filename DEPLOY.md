@@ -232,6 +232,20 @@ routes = [
 `authChecked`（`checkAuth()` 有结果才置 true），所有「未登录」UI 都同时判断它；有本地缓存时直接出网格，
 不用等鉴权。**新加未登录相关 UI 时记得带上 `authChecked`，别只判 `authed`。**
 
+**加站点时自动获取图标失败（ChatGPT 这类）？**
+先看 `/api/meta?url=<站点>` 的 `error`：如果是 `HTTP 403`，说明目标站整站反爬把 Cloudflare 边缘也拦了
+（chatgpt.com / openai.com / copilot.microsoft.com 都这样），连它自己的 `/favicon.ico` 一起 403。
+这时靠**公共图标服务兜底**（顺序：duckduckgo → google s2，两者对不存在的域名都返回 404，不会塞通用地球图）。
+
+⚠️ 这两个服务在境外，产出的链接**国内打不开**，所以规矩是：**公共图标服务的结果只能当「输入」，
+必须先经 `functions/lib/rehost.js` 转存到自建图床再交给客户端**；转存失败就当作没找到（走前端首字兜底），
+绝不把 google/ddg 的链接存进配置。2026-09-17 曾因为「链接国内打不开」把整个兜底删掉，
+结果 ChatGPT 这类站点再也拿不到图标——其实同一次改动已经加了转存环节，兜底是可以留的（2026-09-18 加回）。
+
+排查用：响应里的 `iconSource`（`builtin` / `rehosted` / `external`）与 `iconService`（命中的服务名）
+会告诉你图标是从哪来的；`/api/favicon?url=<站点>` 是同一套逻辑的独立入口（结果同样会转存）。
+图床偶发 500/503 会让转存失败，`rehostIcon` 已内置 3 次退避重试。
+
 **上传图标提示「图床未配置 / 已改用内联保存」？**
 前者说明 `IMG_UPLOAD_API` 还没配置（或配置后未重新部署）；后者是图床返回了错误——先用 curl 直接测图床接口（`curl -F file=@1.png https://图床/upload`），按其响应调整字段名（`IMG_UPLOAD_FIELD`）与鉴权（`IMG_UPLOAD_TOKEN` / `IMG_UPLOAD_QUERY`）；也可在 Brevo 之外看图床服务日志。回退机制下图标仍会保存，不影响使用。
 
