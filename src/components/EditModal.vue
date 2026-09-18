@@ -36,6 +36,8 @@ const uploadingIcon = ref(false)
 const nameTouched = ref(false)
 // 自动获取失败（没拿到图标）时，才把「重试获取」按钮亮出来——正常流程是全自动的
 const fetchFailed = ref(false)
+// 防抖等待期也算"在识别"：粘完链接到真正发请求之间有 800ms，这段时间没反馈会让人以为卡了
+const fetchPending = ref(false)
 const aiGrouping = ref(false)
 const aiGroupHint = ref('')
 const groupTouched = ref(false)
@@ -179,6 +181,7 @@ watch(() => props.visible, (val) => {
 watch(url, (val) => {
   clearTimeout(suggestTimer)
   fetchFailed.value = false // 换了链接就收起「重试获取」，等新一轮自动获取的结果
+  fetchPending.value = false
   if (val.trim() === skipAutoUrl) return
   clearTimeout(autoFetchTimer)
   const u = val.trim()
@@ -194,6 +197,7 @@ watch(url, (val) => {
   // 只像「完整域名」时才自动抓取：带点（含 IP）或带端口（内网 nas:5000）
   const looksLikeHost = host.includes('.') || /:\d+\/?$/.test(u)
   if (!looksLikeHost) return
+  fetchPending.value = true
   autoFetchTimer = setTimeout(() => autoFetch(true), 800)
 })
 
@@ -220,6 +224,7 @@ async function autoFetch(silent = false) {
     return
   }
   fetchingFavicon.value = true
+  fetchPending.value = false
   // 陈旧响应守卫：请求期间用户若改了链接，晚到的响应不得覆盖当前内容
   const forUrl = normalized
   const stale = () => normalizeSiteUrl(url.value.trim()) !== forUrl
@@ -282,6 +287,7 @@ async function autoFetch(silent = false) {
     if (!silent) showToast('获取失败：' + (e?.message || '请手动填写'))
   } finally {
     fetchingFavicon.value = false
+    fetchPending.value = false
   }
 }
 
@@ -495,6 +501,11 @@ async function autoAssignGroup() {
             :disabled="fetchingFavicon"
           >{{ fetchingFavicon ? '获取中…' : '重试获取' }}</button>
         </div>
+        <!-- 识别中要有动静，否则用户以为界面卡住了 -->
+        <p v-if="fetchingFavicon || fetchPending" class="fetch-status">
+          <span class="mini-spinner" aria-hidden="true"></span>
+          正在识别标题和图标…
+        </p>
       </div>
       <div class="form-group">
         <label>名称</label>
@@ -512,7 +523,10 @@ async function autoAssignGroup() {
             @input="groupTouched = true"
           >
         </div>
-        <p v-if="aiGrouping || aiGroupHint" class="group-hint">{{ aiGrouping ? 'AI 正在识别分组…' : aiGroupHint }}</p>
+        <p v-if="aiGrouping || aiGroupHint" class="group-hint">
+          <span v-if="aiGrouping" class="mini-spinner" aria-hidden="true"></span>
+          {{ aiGrouping ? 'AI 正在识别分组…' : aiGroupHint }}
+        </p>
         <datalist id="group-options">
           <option v-for="g in groupOptions" :key="g" :value="g" />
         </datalist>
@@ -614,8 +628,31 @@ async function autoAssignGroup() {
 
 /* 分组输入框下方的 AI 提示 */
 .group-hint {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   margin-top: 6px;
   font-size: 12px;
   color: var(--text-3);
 }
+
+/* 识别中：小转圈 + 文案 */
+.fetch-status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.mini-spinner {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  border-radius: 50%;
+  border: 2px solid rgba(128, 140, 170, 0.25);
+  border-top-color: var(--accent);
+  animation: modal-mini-spin 0.7s linear infinite;
+}
+@keyframes modal-mini-spin { to { transform: rotate(360deg); } }
 </style>
