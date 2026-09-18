@@ -10,6 +10,7 @@
 // 安全：必须登录；apiBase 必须是 https 公网地址（挡掉内网/本机，避免被当成 SSRF 跳板）。
 import { getSessionUser, json } from "../../lib/auth.js";
 import { isPrivateHost } from "../favicon.js";
+import { getUserData } from "../../lib/db.js";
 
 const MAX_ITEMS = 80;
 const MAX_GROUP_NAME = 12;
@@ -64,13 +65,30 @@ export async function onRequest(context) {
   let body;
   try { body = await request.json(); } catch { return json({ ok: false, error: "请求体不是 JSON" }, { status: 400 }); }
 
-  const apiKey = String(body.apiKey || "").trim();
-  const model = String(body.model || "").trim();
-  const apiBase = String(body.apiBase || "").trim().replace(/\/+$/, "");
+  // Key 只写不读：浏览器手里没有，默认从库里取（ai_key）。apiBase/model 同理兜底，
+  // 这样即便前端只发 items 也能工作。
+  let apiKey = String(body.apiKey || "").trim();
+  let model = String(body.model || "").trim();
+  let apiBase = String(body.apiBase || "").trim().replace(/\/+$/, "");
+  if (!apiKey || !model || !apiBase) {
+    const [secretRow, prefRow] = await Promise.all([
+      getUserData(env, sess.user.id, "ai_key").catch(() => null),
+      getUserData(env, sess.user.id, "ai").catch(() => null),
+    ]);
+    if (!apiKey) apiKey = String(secretRow?.value || "").trim();
+    if (prefRow?.value) {
+      try {
+        const o = JSON.parse(prefRow.value) || {};
+        if (!model) model = String(o.model || "").trim();
+        if (!apiBase) apiBase = String(o.apiBase || "").trim().replace(/\/+$/, "");
+      } catch {}
+    }
+  }
   const items = Array.isArray(body.items) ? body.items.slice(0, MAX_ITEMS) : [];
   const groups = Array.isArray(body.groups) ? body.groups.map((g) => String(g).slice(0, MAX_GROUP_NAME)).filter(Boolean) : [];
 
-  if (!apiKey || !model) return json({ ok: false, error: "请先在设置里填好大模型 API Key 与模型名" }, { status: 400 });
+  if (!apiKey) return json({ ok: false, error: "还没保存大模型 API Key，请到「设置 → AI 自动分组」里填一次" }, { status: 400 });
+  if (!model || !apiBase) return json({ ok: false, error: "请先填好接口地址与模型名" }, { status: 400 });
   if (!items.length) return json({ ok: true, groups: {} });
 
   let url;

@@ -9,7 +9,7 @@ import {
   loadHero, saveHero, applyHero,
 } from '../composables/usePrefs'
 import { probeImageBed, uploadImage, authed, userEmail, isAdmin } from '../composables/sync'
-import { aiSettings, saveAiSettings, aiGroupSites, DEFAULT_AI } from '../composables/useAi'
+import { aiSettings, saveAiSettings, saveAiKey, aiGroupSites, DEFAULT_AI } from '../composables/useAi'
 
 const props = defineProps({
   visible: Boolean,
@@ -55,18 +55,45 @@ const migrateProgress = ref('')
 const sizePct = computed(() => pxToPct(grid.value.size))
 
 // ---- AI 自动分组（Key 只在本机 localStorage；没配置就不启用）----
-const aiForm = ref({ ...DEFAULT_AI, ...aiSettings.value })
-// 账号同步回来的值（或另一台设备改的）进来时，刷新表单
-watch(aiSettings, (v) => { aiForm.value = { ...DEFAULT_AI, ...v } })
+const aiForm = ref({ ...DEFAULT_AI, ...aiSettings.value, apiKey: '' })
+// 账号同步回来的值（或另一台设备改的）进来时，刷新表单（Key 永远是空的）
+watch(aiSettings, (v) => { aiForm.value = { ...DEFAULT_AI, ...v, apiKey: '' } })
 const aiBusy = ref(false)
 const aiProgress = ref('')
+const aiSaving = ref(false)
+const aiSavedKey = computed(() => aiSettings.value.hasKey)
+// 已存过 Key 就不用再填；否则需要现场输入
 const aiReady = computed(() =>
-  Boolean(aiForm.value.apiKey.trim() && aiForm.value.model.trim() && aiForm.value.apiBase.trim())
+  Boolean(aiForm.value.model.trim() && aiForm.value.apiBase.trim() && (aiSavedKey.value || aiForm.value.apiKey.trim()))
 )
 
-function saveAi() {
-  saveAiSettings(aiForm.value)
-  showToast('大模型设置已保存（只存在本机浏览器）')
+// 保存：接口地址/模型走账号同步，Key 单独上行一次且服务端不回传
+async function saveAi() {
+  if (aiSaving.value) return
+  aiSaving.value = true
+  try {
+    saveAiSettings({ apiBase: aiForm.value.apiBase, model: aiForm.value.model })
+    if (aiForm.value.apiKey.trim()) {
+      await saveAiKey(aiForm.value.apiKey)
+      aiForm.value.apiKey = ''
+      showToast('已保存：Key 只上传一次，之后浏览器不再持有（同步所有设备可用）')
+    } else {
+      showToast('已保存（接口地址与模型跟随账号同步）')
+    }
+  } catch (e) {
+    showToast('保存失败：' + (e?.message || ''))
+  } finally {
+    aiSaving.value = false
+  }
+}
+
+async function clearAiKey() {
+  try {
+    await saveAiKey('')
+    showToast('已清除保存的 API Key')
+  } catch (e) {
+    showToast('清除失败：' + (e?.message || ''))
+  }
 }
 
 async function runAiGroupAll() {
@@ -1002,17 +1029,23 @@ function pickImport() {
         <div class="ai-form">
           <input class="form-input" v-model="aiForm.apiBase" placeholder="接口地址，如 https://api.deepseek.com/v1" autocomplete="off">
           <input class="form-input" v-model="aiForm.model" placeholder="模型名，如 deepseek-chat" autocomplete="off">
-          <input class="form-input" type="password" v-model="aiForm.apiKey" placeholder="API Key（跟随账号同步）" autocomplete="new-password">
+          <input
+            class="form-input" type="password" v-model="aiForm.apiKey"
+            :placeholder="aiSavedKey ? 'API Key 已保存（留空则不修改）' : 'API Key（只上传一次，浏览器不留存）'"
+            autocomplete="new-password"
+          >
           <div class="ai-row">
-            <button class="btn-text fetch-btn" @click="saveAi">保存</button>
+            <button class="btn-text fetch-btn" :disabled="aiSaving" @click="saveAi">{{ aiSaving ? '保存中…' : '保存' }}</button>
+            <button v-if="aiSavedKey" class="btn-text fetch-btn" title="清除已保存的 Key" @click="clearAiKey">清除 Key</button>
             <button class="btn-text primary" :disabled="!aiReady || aiBusy" @click="runAiGroupAll">
               {{ aiBusy ? (aiProgress || '分组中…') : '用 AI 给全部站点分组' }}
             </button>
           </div>
           <p class="ai-tip">
-            设置<b>跟随账号同步</b>（存在你自己的库里，key = <code>ai</code>），换设备登录不用重填；
-            调用时经自家 Worker 转发（国内浏览器直连大模型接口常超时/CORS 被拦）。
-            分组名只是给「视图 → 按分组」用，不影响默认平铺排布；新增站点时会自动识别并把分组名填进输入框，可随时改。
+            接口地址与模型<b>跟随账号同步</b>；<b>API Key 只写不读</b>——保存时上行一次，
+            之后服务端不再回传、浏览器 localStorage 也不保存（控制台里看不到），
+            调用时由自家 Worker 用你的会话去库里取。换设备登录后直接可用，不用重填。
+            分组名只给「视图 → 按分组」用，不影响默认排布；新增站点时会自动识别并把分组名填进输入框，可随时改。
           </p>
         </div>
       </div>

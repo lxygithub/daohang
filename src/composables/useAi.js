@@ -5,9 +5,11 @@
 // 走服务端转发而不是浏览器直连的原因：国内浏览器直连 api.openai.com / api.deepseek.com
 // 常常超时或 CORS 被拦，而 Worker 在境外边缘，通道稳定。
 //
-// 2026-09-18 变更：按用户要求改成**跟账号同步**（存进自己的 daohang.user_data，
-// key = 'ai'，走 /api/user/prefs 的 LWW 合并）。换设备登录不用重填 Key。
-// ⚠️ 代价是 Key 会落在你自己的数据库里，能读到该账号配置的人就能看到它。
+// 2026-09-18 变更（两轮）：
+//   1) 设置跟账号同步（接口地址/模型走 /api/user/prefs 的 LWW 合并，key = 'ai'）；
+//   2) **Key 只写不读**：单独存服务端 user_data.key = 'ai_key'，任何接口都不回传，
+//      浏览器 localStorage 里也不留 —— 控制台/扩展/XSS 都读不到。
+//      页面只知道一个 hasKey 标记；真正调用时由 Worker 去库里取 Key（见 api/ai/group.js）。
 import { ref } from 'vue'
 
 const KEY = 'nav_ai_settings'
@@ -15,13 +17,19 @@ const KEY = 'nav_ai_settings'
 export const DEFAULT_AI = {
   apiBase: 'https://api.deepseek.com/v1', // OpenAI 兼容接口，含 /v1 前缀
   model: 'deepseek-chat',
-  apiKey: '',
+  hasKey: false, // 服务端是否已保存 Key（前端拿不到 Key 本身）
 }
 
 function load() {
   try {
     const raw = JSON.parse(localStorage.getItem(KEY) || 'null')
-    return raw && typeof raw === 'object' ? { ...DEFAULT_AI, ...raw } : { ...DEFAULT_AI }
+    if (!raw || typeof raw !== 'object') return { ...DEFAULT_AI }
+    // 老数据里可能还带着 apiKey：立刻从本地抹掉（服务器那份由 prefs 接口搬到 ai_key）
+    if ('apiKey' in raw) {
+      delete raw.apiKey
+      try { localStorage.setItem(KEY, JSON.stringify(raw)) } catch {}
+    }
+    return { ...DEFAULT_AI, ...raw }
   } catch {
     return { ...DEFAULT_AI }
   }
@@ -30,7 +38,9 @@ function load() {
 export const aiSettings = ref(load())
 
 function normalize(o) {
-  return { ...DEFAULT_AI, ...(o && typeof o === 'object' ? o : {}) }
+  const src = o && typeof o === 'object' ? { ...o } : {}
+  delete src.apiKey // 任何情况下都不在本地保存 Key
+  return { ...DEFAULT_AI, ...src }
 }
 
 /** 写 localStorage + 广播事件；同步层（bindPrefEvents）监听到就会推到账号上 */
@@ -39,6 +49,21 @@ export function saveAiSettings(next) {
   aiSettings.value = merged
   try { localStorage.setItem(KEY, JSON.stringify(merged)) } catch {}
   window.dispatchEvent(new CustomEvent('ai-changed', { detail: merged }))
+}
+
+/** 保存 Key：只上行一次，服务端不回传；成功后本地只留 hasKey 标记 */
+export async function saveAiKey(apiKey) {
+  const res = await fetch('/api/settings/ai-key', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ apiKey: String(apiKey || '').trim() }),
+    signal: AbortSignal.timeout(20000),
+  })
+  const d = await res.json().catch(() => ({}))
+  if (!res.ok || !d.ok) throw new Error(d.error || `HTTP ${res.status}`)
+  aiSettings.value = { ...aiSettings.value, hasKey: !!d.hasKey }
+  try { localStorage.setItem(KEY, JSON.stringify(aiSettings.value)) } catch {}
+  return !!d.hasKey
 }
 
 // 服务端把值写回 localStorage 后也会广播同一个事件（见 sync.js 的 applyServer）
@@ -52,7 +77,7 @@ if (typeof window !== 'undefined') {
 /** 配置齐了（有 key + 模型）才算启用；没配置时所有 AI 入口都不显示 */
 export function aiConfigured() {
   const s = aiSettings.value
-  return Boolean(String(s.apiKey || '').trim() && String(s.model || '').trim() && String(s.apiBase || '').trim())
+  return Boolean(s.hasKey && String(s.model || '').trim() && String(s.apiBase || '').trim())
 }
 
 /**
@@ -67,7 +92,8 @@ export async function aiGroupSites(items, groups) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      apiBase: s.apiBase, model: s.model, apiKey: s.apiKey,
+      // 不带 apiKey：Worker 用当前会话去库里取
+      apiBase: s.apiBase, model: s.model,
       groups: groups || [], items,
     }),
     signal: AbortSignal.timeout(90_000),
