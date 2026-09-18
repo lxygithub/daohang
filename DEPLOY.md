@@ -233,18 +233,40 @@ routes = [
 不用等鉴权。**新加未登录相关 UI 时记得带上 `authChecked`，别只判 `authed`。**
 
 **加站点时自动获取图标失败（ChatGPT 这类）？**
-先看 `/api/meta?url=<站点>` 的 `error`：如果是 `HTTP 403`，说明目标站整站反爬把 Cloudflare 边缘也拦了
-（chatgpt.com / openai.com / copilot.microsoft.com 都这样），连它自己的 `/favicon.ico` 一起 403。
-这时靠**公共图标服务兜底**（顺序：duckduckgo → google s2，两者对不存在的域名都返回 404，不会塞通用地球图）。
 
-⚠️ 这两个服务在境外，产出的链接**国内打不开**，所以规矩是：**公共图标服务的结果只能当「输入」，
-必须先经 `functions/lib/rehost.js` 转存到自建图床再交给客户端**；转存失败就当作没找到（走前端首字兜底），
-绝不把 google/ddg 的链接存进配置。2026-09-17 曾因为「链接国内打不开」把整个兜底删掉，
-结果 ChatGPT 这类站点再也拿不到图标——其实同一次改动已经加了转存环节，兜底是可以留的（2026-09-18 加回）。
+取图标的**顺序**（全在 Worker 侧，见 `functions/api/favicon.js` + `api/meta.js`）：
 
-排查用：响应里的 `iconSource`（`builtin` / `rehosted` / `external`）与 `iconService`（命中的服务名）
-会告诉你图标是从哪来的；`/api/favicon?url=<站点>` 是同一套逻辑的独立入口（结果同样会转存）。
-图床偶发 500/503 会让转存失败，`rehostIcon` 已内置 3 次退避重试。
+1. **内置站点库**：命中域名就直接用自家图床的外链，省掉整轮探测（1.9 万条，国内站点居多）；
+2. **站点自身**：页面 `<link rel=icon>` → apple-touch-icon → 常见 favicon 路径；
+3. **公共图标服务兜底**（并发探测、按序取第一个命中）：
+   `duckduckgo` → `google-s2` → `google-gstatic(faviconV2)` → `unavatar(?fallback=false)` → `favicon.im`；
+4. 命中后**一律转存到自建图床**（`functions/lib/rehost.js`，3 次退避重试），失败就当作没找到，走前端首字兜底。
+
+先看 `/api/meta?url=<站点>` 的 `error`：`HTTP 403` 说明目标站整站反爬把 Cloudflare 边缘也拦了
+（chatgpt.com / openai.com / copilot.microsoft.com 都这样），连它自己的 `/favicon.ico` 一起 403，只能靠第 3 步。
+
+⚠️ **公共图标服务的链接国内打不开**（实测本机直连 10s 超时、TCP 都连不上），所以规矩是：
+**它们的结果只能当「输入」，必须转存到自建图床再交给客户端**；转存失败宁可返回空，也不能把
+google/ddg 的链接存进配置。2026-09-17 曾因为「链接国内打不开」把整个兜底删掉，结果 ChatGPT 这类
+站点再也拿不到图标——其实同一次改动已经加了转存环节，兜底完全可以留（2026-09-18 加回并扩到 5 个）。
+
+**为什么浏览器端不再兜底**：`publicFallbackIcon` 已删除。浏览器直连公共图标服务在国内被墙；
+就算能连上，拿到的也是目标站自己的链接，站点被墙时首页照样破图（不经图床救不了）。
+唯一例外是**内网地址**（`lanAutoFill` 保留）——Worker 在公网，够不到 `192.168.x.x`。
+
+**排查用**：
+
+- `/api/meta?url=<站点>` 响应里的 `iconSource`（`builtin` / `rehosted` / `external`）与
+  `iconService`（命中的服务名）说明图标从哪来；
+- `/api/favicon?probe=1&url=<站点>` 一次性列出 5 个服务各自的探测结果与体积，用来判断"是服务没收录还是网络不通"；
+- `/api/favicon?url=<站点>` 是同一套逻辑的独立入口（结果同样会转存）。
+
+收录服务的取舍（实测）：`icon.horse` 对不存在的域名返回**按域名生成的字母头像**（2.3K/3.0K 不等），
+分不出真假所以没收；`api.faviconkit`、`favicon.yandex.net` 一律返回 1×1 占位；`logo.clearbit.com` 已不可用。
+`favicon.im` 的占位图是固定的 257B，因此给它加了 `minBytes: 1024` 门槛。
+
+> 2026-09-18 抽样 20 个域名：`google-s2` / `google-gstatic` 各 20、`favicon-im` 18、`duckduckgo` 16、
+> `unavatar` 4。也就是说**多出来的几个主要是冗余**（某个服务限流/故障时顶上），并不指望它们多覆盖多少域名。
 
 **上传图标提示「图床未配置 / 已改用内联保存」？**
 前者说明 `IMG_UPLOAD_API` 还没配置（或配置后未重新部署）；后者是图床返回了错误——先用 curl 直接测图床接口（`curl -F file=@1.png https://图床/upload`），按其响应调整字段名（`IMG_UPLOAD_FIELD`）与鉴权（`IMG_UPLOAD_TOKEN` / `IMG_UPLOAD_QUERY`）；也可在 Brevo 之外看图床服务日志。回退机制下图标仍会保存，不影响使用。

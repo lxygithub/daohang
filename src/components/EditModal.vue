@@ -7,7 +7,6 @@ import {
   normalizeSiteUrl,
   isPrivateHost,
   lanAutoFill,
-  publicFallbackIcon,
   mixedContentBlocked,
   guessLanName,
 } from '../utils/siteMeta'
@@ -102,7 +101,9 @@ async function fetchFavicon() {
 
 // 自动获取：标题 + 图标一次拿齐（silent=true 时由防抖触发，不弹提示）
 // - 内网地址：Cloudflare 边缘无法访问 → 浏览器直连探测（lanAutoFill）
-// - 公网地址：先走 /api/meta，失败后浏览器二次兜底（publicFallbackIcon）
+// - 公网地址：全部交给 /api/meta（Worker 侧：内置站点库 → 站点自身 → 多个公共图标服务 → 转存图床）。
+//   浏览器端不再发起任何公网图标请求：用户在国内直连那些服务/站点会被墙，而且拿到的是
+//   目标站自己的链接（站点被墙时首页就是破图），不如统一由 Worker 取回并转存到自家图床。
 async function autoFetch(silent = false) {
   const normalized = normalizeSiteUrl(url.value.trim())
   if (!normalized) {
@@ -130,10 +131,6 @@ async function autoFetch(silent = false) {
     } else {
       const res = await fetch(`/api/meta?url=${encodeURIComponent(normalized)}`, { signal: ctrl.signal })
       data = await res.json()
-      if (!data.icon) {
-        const fb = await publicFallbackIcon(normalized)
-        if (fb) data.icon = fb
-      }
     }
     clearTimeout(timer)
 

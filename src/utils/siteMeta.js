@@ -169,19 +169,9 @@ export async function lanAutoFill(siteUrl) {
   return out
 }
 
-// 公网站点兜底：服务端 /api/meta 失败后，由浏览器直连探测。
-// 浏览器请求带用户 Cookie、出口 IP 是用户而非机房，可救回一批被反爬拦截的站点。
-export async function publicFallbackIcon(siteUrl) {
-  let domain = ""
-  try { domain = new URL(siteUrl).hostname } catch { return "" }
-  if (!domain || isPrivateHost(domain)) return ""
-  const urls = [
-    "/favicon.ico",
-    "/favicon.png",
-    "/favicon.svg",
-  ].map((p) => { try { return new URL(p, siteUrl).href } catch { return "" } }).filter(Boolean)
-  // 只探测站点自身的常见 favicon 路径。公共图标服务（duckduckgo / google s2）在国内不可达，
-  // 会把图标换成坏链接；内网/抓不到的情况交给首页的首字母回退块，不再塞第三方地址。
-  const hits = await Promise.all(urls.map((u) => probeIcon(u)))
-  return hits.find(Boolean) || ""
-}
+// 注意：**公网站点的图标一律由 Worker 侧的 /api/meta 负责**（内置站点库 → 站点自身 →
+// 多个公共图标服务 → 转存到自建图床），浏览器端不再发任何公网图标请求。原因：
+//   1) 公共图标服务在国内不可达，浏览器直连只会拿到坏链接；
+//   2) 浏览器拿到的必然是目标站自己的链接，站点被墙时首页照样是破图（不经图床就没法救）；
+//   3) 用户浏览器可能开着代理、也可能没有，行为不可控，排查困难。
+// 只有内网地址（lanAutoFill）必须由浏览器直连——Worker 在公网，够不到 192.168.x.x。

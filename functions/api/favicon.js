@@ -133,7 +133,9 @@ function isImageResponse(res, url) {
 }
 
 // GET 探测（HEAD 常被 403/405 拒绝）：确认可加载后立即取消 body 省流量。
-async function probeImage(url, timeout = 2500) {
+// opts.bytes = true 时改成把图读出来数一下体积（有些图标服务对「查不到」的域名也返回 200 +
+// 一张占位图，只能靠体积门槛区分），返回 { url, size }；否则返回 url 字符串。
+async function probeImage(url, timeout = 2500, opts = {}) {
   try {
     const res = await fetch(url, {
       method: "GET",
@@ -145,6 +147,11 @@ async function probeImage(url, timeout = 2500) {
     if (!isImageResponse(res, url)) {
       try { res.body?.cancel(); } catch {}
       return null;
+    }
+    if (opts.bytes) {
+      const buf = await res.arrayBuffer();
+      if (!buf.byteLength) return null;
+      return { url, size: buf.byteLength };
     }
     try { res.body?.cancel(); } catch {}
     return url;
@@ -170,10 +177,37 @@ const FALLBACK_PATHS = [
 // 因此**绝不能把它们的链接交给客户端**：调用方必须先转存到自建图床（见 lib/rehost.js）。
 // 2026-09-18 之前这里整个删掉过一次，是因为当年直接把链接存进了配置；现在有转存环节，
 // 拿它们当「输入」是安全的——ChatGPT / openai.com 这类整站 403 的站点就靠这一步救回来。
+// 顺序即优先级。前四个「查不到就 404」，语义干净；带 minBytes 的那类服务对未知域名也返回
+// 200 + 占位图，只能靠体积门槛挡（实测 favicon.im 的占位图是固定的 257B 自家 logo）。
+// 刻意没收的：icon.horse（未知域名返回按域名生成的字母头像，分不出来）、
+// api.faviconkit / favicon.yandex.net（一律 1×1 占位）、logo.clearbit.com（已不可用）。
 const ICON_SERVICES = [
   { id: "duckduckgo", url: (host) => `https://icons.duckduckgo.com/ip3/${host}.ico` },
   { id: "google-s2", url: (host) => `https://www.google.com/s2/favicons?domain=${host}&sz=128` },
+  {
+    id: "google-gstatic",
+    url: (host) =>
+      `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${host}&size=128`,
+  },
+  { id: "unavatar", url: (host) => `https://unavatar.io/${host}?fallback=false` },
+  { id: "favicon-im", url: (host) => `https://favicon.im/${host}`, minBytes: 1024 },
 ];
+
+// 依次探测所有公共图标服务（并发），返回 [{ id, url, ok, size?, reason? }]，用于排障接口。
+export async function probeIconServices(host, timeout = 8000) {
+  if (!host) return [];
+  return Promise.all(
+    ICON_SERVICES.map(async (s) => {
+      const url = s.url(host);
+      const got = await probeImage(url, timeout, { bytes: true });
+      if (!got) return { id: s.id, url, ok: false, reason: "无响应 / 非图片 / 404" };
+      if (s.minBytes && got.size < s.minBytes) {
+        return { id: s.id, url, ok: false, size: got.size, reason: `体积 ${got.size}B < 门槛 ${s.minBytes}B（疑似占位图）` };
+      }
+      return { id: s.id, url, ok: true, size: got.size };
+    })
+  );
+}
 
 // Resolve the best icon for a site. `preFetched` = result of fetchHtml() to
 // avoid a second request when the caller already downloaded the page.
@@ -224,12 +258,11 @@ export async function findIcon(siteUrl, preFetched = null, opts = {}) {
   let host = "";
   try { host = new URL(base).hostname; } catch { return null; }
   if (!host) return null;
-  const serviceHits = await Promise.all(
-    ICON_SERVICES.map(async (s) => ((await probeImage(s.url(host), 8000)) ? { ...s, hit: true } : null))
-  );
-  const svc = serviceHits.find(Boolean);
-  if (!svc) return null;
-  return { url: svc.url(host), kind: "service", service: svc.id };
+  // 并发探测、按 ICON_SERVICES 的顺序取第一个命中的（顺序 = 优先级）
+  const probes = await probeIconServices(host);
+  const hit = probes.find((p) => p.ok);
+  if (!hit) return null;
+  return { url: hit.url, kind: "service", service: hit.id };
 }
 
 export async function onRequest(context) {
@@ -250,6 +283,12 @@ export async function onRequest(context) {
 
   if (isPrivateHost(new URL(normalized).hostname) && !env?.ALLOW_PRIVATE_FETCH) {
     return json({ found: false, lan: true, reason: "内网地址无法从服务端访问" });
+  }
+
+  // 排障用：?probe=1 只报告各公共图标服务对这个域名能不能拿到图标，不转存、不返回链接
+  if (url.searchParams.get("probe") === "1") {
+    const probes = await probeIconServices(new URL(normalized).hostname);
+    return json({ host: new URL(normalized).hostname, probes });
   }
 
   try {
