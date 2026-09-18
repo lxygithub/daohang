@@ -319,6 +319,16 @@ routes = [
 要真正掐掉冷启动那十几秒，得让图床那侧也把非标准后缀缓存起来（Cloudflare 缓存规则）
 或把图标换个后缀重新上传。
 
+**2026-09-18 收尾：把那 18 个自定义后缀的文件重传成了标准后缀。** 图床里 `image/x-icon`
+被旧逻辑写成 `.xicon`（12 个）、`image/vnd.microsoft.icon` → `.vndmicrosofticon`（5 个）、
+`image/svg+xml` → `.svgxml`（1 个）——Cloudflare 默认只缓存常见后缀，这些全是
+`cf-cache-status: DYNAMIC`。重传脚本 `scripts/imgbed-fix-ext.mjs`（干跑/`--apply`）：
+下载 → 按真实 MIME 换后缀重传 → 替换 `user_data.config` 与 `builtin_sites.icon` 里的引用 →
+删旧文件 → 逐个自检 200。改完这 18 个后缀都变成 `.ico`/`.svg`，边缘缓存立刻 HIT。
+**不用去 Cloudflare 加缓存规则了**（那是另一个选择，覆盖所有后缀，但为 18 个文件不值当）。
+实测：清空浏览器图片缓存后刷新，51 张图标 **4.4s** 全部就绪（49 个请求走一条 HTTP/2
+完全并行），而改动前是 13s。
+
 **打开首页背景先黑一下，过一会才出背景？**
 
 背景（`config.background` / `config.wallpaper`）要等配置从网关回来才知道，而那是一趟
