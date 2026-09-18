@@ -2525,3 +2525,15 @@ html[data-theme="light"] .fab-windmill:hover {
   border-color: transparent;
   box-shadow: none;
 }
+
+/* ============================================================
+   图标占位：图片还在下载时先显示首字母色块
+   国内拉一张图标要 1~2s，之前这段时间卡片是空的（看起来像图标没出来）
+   ============================================================ */
+.card-icon.icon-loading .card-icon-text {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+}
+.card-icon.icon-loading img { position: relative; z-index: 1; }

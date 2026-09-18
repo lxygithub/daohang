@@ -293,6 +293,32 @@ routes = [
 `authChecked`（`checkAuth()` 有结果才置 true），所有「未登录」UI 都同时判断它；有本地缓存时直接出网格，
 不用等鉴权。**新加未登录相关 UI 时记得带上 `authChecked`，别只判 `authed`。**
 
+**刷新后标题出来了、图标还是空白？**
+
+2026-09-18 实测的根因有三条，都在图床那一侧：
+
+1. **老图标的后缀 Cloudflare 不缓存**：`.xicon` / `.vndmicrosofticon` 这种自定义后缀返回
+   `cf-cache-status: DYNAMIC`，每张都要回源到家里的 Cloudreve，国内单张 **2~3s**
+   （`.png`/`.svg` 是 `HIT`，快得多）；
+2. 浏览器对单个域名只开 **6 条连接**，50 张图标排队串行，冷启动十几秒才铺满；
+3. 浏览器缓存被清 / 换设备时，上面两条会重演。
+
+三层处理：
+
+- `functions/api/icon.js`：**同源图标代理 + Cloudflare 边缘缓存**（`caches.default`）。
+  前端 `utils/iconUrl.js` 把自家图床的外链改写成 `/api/icon?u=...`。好处：① 50 个请求走
+  已建好的 daohang.ieop.top 一条 HTTP/2 连接并发；② 代理层把图片写进边缘缓存，
+  实测 Worker 内部 wallTime 首次 634ms → **命中后 7ms**，换设备/清缓存也不怕；
+  ③ 只白名单 `img-bed.ieoc.top`，不是开放代理。
+- `sw.js` 对 `destination === 'image'` 做 cache-first（独立缓存 `daohang-img-v1`）。
+- `NavCard` **占位**：图片没加载完时先显示首字母色块（`.card-icon.icon-loading`），
+  刷新后 600ms 就有 49 张卡有色块、3s 后全换成真图标——不再是空洞。
+
+⚠️ 冷启动总耗时仍受"图床回源到家里 Cloudreve"的吞吐限制（实测冷缓存铺满 50 张约 13~16s），
+代理**没有**改善这一段；能改善的是重复访问、换设备、以及"不再看起来是空的"。
+要真正掐掉冷启动那十几秒，得让图床那侧也把非标准后缀缓存起来（Cloudflare 缓存规则）
+或把图标换个后缀重新上传。
+
 **打开首页背景先黑一下，过一会才出背景？**
 
 背景（`config.background` / `config.wallpaper`）要等配置从网关回来才知道，而那是一趟

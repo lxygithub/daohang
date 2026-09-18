@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, inject, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { textIconChars } from '../utils/textIcon'
+import { iconSrc } from '../utils/iconUrl'
 
 // 内置导航：数据源为站点库 API（/api/builtin-sites，PostgreSQL 全量库 1.9w+ 站点，
 // 图标为图床外链）。受欢迎的 = 全库按 rate 降序首页；分类 = builtin_site_cats 过滤。
@@ -231,7 +232,7 @@ function handleOverlayClick(e) {
               <img
                 v-if="s.icon && !brokenIcons.has(s.url)"
                 class="builtin-icon"
-                :src="s.icon"
+                :src="iconSrc(s.icon)"
                 alt=""
                 loading="lazy"
                 referrerpolicy="no-referrer"

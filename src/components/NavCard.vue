@@ -1,6 +1,7 @@
 <script setup>
 import { computed, inject, ref, watch } from 'vue'
 import { textIconChars } from '../utils/textIcon'
+import { iconSrc } from '../utils/iconUrl'
 
 const props = defineProps({
   service: { type: Object, required: true },
@@ -8,6 +9,8 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['open'])
+// 图标走同源代理 + 边缘缓存（见 utils/iconUrl.js）
+const imgSrc = computed(() => iconSrc(props.service.icon))
 const openEditModal = inject('openEditModal')
 const editMode = inject('editMode', ref(false))
 const setEditMode = inject('setEditMode', () => {})
@@ -39,7 +42,10 @@ const host = computed(() => {
 // Legacy emoji / preset icons render as text icons too (both pickers are gone).
 // 图标 URL 加载失败（404/防盗链）也回退文字图标，避免破图挂在网上
 const iconFailed = ref(false)
-watch(() => props.service.icon, () => { iconFailed.value = false })
+// 图标还在下载：先把首字母色块垫上。国内拉一张图要 1~2s，这段时间卡片是空的，
+// 看起来像"标题出来了图标没出来"。
+const imgLoaded = ref(false)
+watch(() => props.service.icon, () => { iconFailed.value = false; imgLoaded.value = false })
 
 const isTextIcon = computed(() =>
   !props.service.icon ||
@@ -48,6 +54,12 @@ const isTextIcon = computed(() =>
   props.service.iconType === 'emoji' ||
   props.service.iconType === 'preset'
 )
+
+// 占位态：有图片 URL、没失败、但还没加载完
+const iconLoading = computed(() =>
+  !isTextIcon.value && props.service.iconType === 'url' && !!props.service.icon && !imgLoaded.value
+)
+const showTextIcon = computed(() => isTextIcon.value || iconLoading.value)
 
 const textChar = computed(() => textIconChars(props.service.name))
 
@@ -236,15 +248,16 @@ function handleTouchEnd(e) {
     @touchcancel="handleTouchEnd"
   >
     <div class="icon-wrap">
-      <div class="card-icon" :class="{ 'icon-text-mode': isTextIcon }" :style="{ '--h': hue }">
+      <div class="card-icon" :class="{ 'icon-text-mode': showTextIcon, 'icon-loading': iconLoading }" :style="{ '--h': hue }">
         <img
           v-if="service.iconType === 'url' && service.icon && !iconFailed"
-          :src="service.icon"
+          :src="imgSrc"
           :alt="service.name"
           referrerpolicy="no-referrer"
           @error="iconFailed = true"
+          @load="imgLoaded = true"
         >
-        <span v-if="isTextIcon" class="card-icon-text">{{ textChar }}</span>
+        <span v-if="showTextIcon" class="card-icon-text">{{ textChar }}</span>
       </div>
 
       <!-- Edit-mode overlay: delete top-right, edit center (anchored to the icon) -->

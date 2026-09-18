@@ -4,6 +4,7 @@ import ImageCropper from './ImageCropper.vue'
 import { probeImageBed, uploadImage } from '../composables/sync'
 import { aiConfigured, aiGroupSites } from '../composables/useAi'
 import { textIconChars } from '../utils/textIcon'
+import { iconSrc } from '../utils/iconUrl'
 import {
   normalizeSiteUrl,
   isPrivateHost,
@@ -536,7 +537,7 @@ async function autoAssignGroup() {
         <div class="custom-icon-panel">
           <button class="btn-text upload-btn" @click="pickFile">上传图标</button>
           <input type="text" class="form-input" v-model="iconUrl" placeholder="或输入图片 URL">
-          <img v-if="faviconPreview" :src="faviconPreview" class="favicon-preview" referrerpolicy="no-referrer" @error="faviconPreview = ''">
+          <img v-if="faviconPreview" :src="iconSrc(faviconPreview)" class="favicon-preview" referrerpolicy="no-referrer" @error="faviconPreview = ''">
         </div>
       </div>
       <div class="modal-footer">
