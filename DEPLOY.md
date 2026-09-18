@@ -446,6 +446,8 @@ docker exec -i forgotit-postgres psql -U forgotit -d daohang -v ON_ERROR_STOP=1 
    网关 `GATEWAY_DAOHANG_PG_RW_URL` 指向 `.../daohang`，Worker 侧由 `SQL_GATEWAY_TARGET=daohang-postgres` 指定；
    `forgotit` 库里那份 `daohang`/`wearwhat` schema 是当初迁移试建留下的副本（`wrangler.toml` 第 72 行有注记），
    **往它里面写等于没改**。动库前先确认库名，别只看 `\dn` 出来的 schema 列表。
+   （2026-09-18：两个副本 schema 已从 `forgotit` 库删除，备份
+   `/mnt/datadisk/yuan/backups/forgotit-db-leftover-schemas-20260918.sql`，验证过可完整还原。）
 2. **图床批量删除内部并发是 10，会撞 D1 写锁**：`delete/batch` 一次传 500 时约一半返回笼统的
    `Delete file failed`（Telegram 31%、WebDAV 47% 的失败率接近，说明是公共环节而非后端差异）。
    降到 **批次 50 + 批间 sleep 500ms** 后，剩下 2,970 个一次跑完 **0 失败**。
