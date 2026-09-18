@@ -175,6 +175,30 @@ npm run builtin:import   # 5. 全量导入 D1（upsert 幂等，需先 re-arm �
 
 **图床端遗留清理（低优先级）**：图床上存在同内容重复文件，两个成因：①502 风暴期「上传成功但响应丢失→重试」产生的孤儿文件（从未记录在状态文件）；②09-16 第二轮约 3,764 张的上传记录随沙箱回滚丢失（URL 无从恢复），本轮重传产生同内容重复。v3 上传文件名为确定性 `{sha1}.{ext}`（图床外链形如 `{时间戳}_{sha1}.{ext}`），**图床管理端按文件名后缀排序即可筛出同 sha1 重复**：保留最新一条、删除其余。若可提供图床管理 API Token，也可脚本化对账清理。
 
+### 新增站点时的模糊搜索（2026-09-18）
+
+「新增项目」的链接框现在支持「输入关键词出候选」，实现见 `functions/api/site-suggest.js`：
+
+- **站点库优先**：关键词拿去 1.9 万条内置站点里 LIKE 匹配（名称、网址都匹配），再按
+  「同一站点只留一条 + 路径越浅越靠前」重排；爬虫抓坏的名字（含 HTML 碎片或超过 40 字）用域名顶替。
+  实测「知乎」出 4 条、「12306」7 条、「京东」「美团」各 5 条。
+- **域名猜测兜底**：关键词是 ASCII 时，用**公共 DoH**（`https://cloudflare-dns.com/dns-query`，
+  `accept: application/dns-json`，NXDOMAIN 返回 Status=3）并发探测 `<关键词>.<TLD>`，
+  TLD 顺序 com→cn→net→org→io→co→so→com.cn→app→dev→ai→me→cc→tv→top→xyz，
+  只返回真实存在的域名；选中后再走 `/api/meta` 取标题与图标。实测「chatgpt」→ `chatgpt.com/cn/net/...`。
+- 中文关键词 DNS 猜不出来（那是另一套映射），靠站点库那一侧。
+
+**为什么没用现成的公共服务**（2026-09-18 实测）：
+
+| 服务 | 结果 |
+| --- | --- |
+| Domainr v2 `api.domainr.com/v2/search` | 无 `client_id` 直接 **401** |
+| Google/Bing 联想 `suggestqueries.google.com` | 返回的是**搜索词**（`chatgpt login`）不是域名，用不上 |
+| Wikidata `wbsearchentities` | 能查实体，但要再查一次 P856 官方站点，中文小站覆盖差 |
+| **公共 DoH**（cloudflare-dns.com / dns.google） | ✅ 免 key、稳定、Worker 天然可达 |
+
+顺带：整站反爬的站点（chatgpt.com 这类）标题抓不到，名称栏会按域名预填（`chatgpt.com`），可修改。
+
 ## 七、管理员
 
 - 管理员 = `ADMIN_EMAILS` 中列出的邮箱。用该邮箱**注册/登录**后，用户菜单出现「用户管理」入口。
@@ -218,6 +242,12 @@ routes = [
 
 **改了 `[vars]` 不生效？**
 `wrangler.toml` 的变量在部署时注入，改完要 `npx wrangler deploy`（或 push 触发 Workers Builds）。**机密不用**：`wrangler secret put` 后立即生效。
+
+**改了 `functions/` 下的代码，部署后没生效？**
+`wrangler deploy` 上传的是 `functions-worker/index.js`（由 `wrangler pages functions build` 从 `functions/` 编译而来）和 `dist/`，**它不会替你重新编译**。所以改完必须跑 `npm run deploy`
+（= `npm run build && wrangler deploy`）；只跑 `wrangler deploy` 会原样发旧产物。2026-09-18 踩过这个坑：
+改完 `functions/api/site-suggest.js` 后只跑了 `wrangler deploy`，线上还是旧逻辑，排查了半天。
+另外 `/api/*` 多数带边缘缓存（`site-suggest` 是 300s/600s），新逻辑可能被旧缓存挡住，验证时换个关键词或等过期。
 
 **频繁 429？**
 登录/注册/发码有限流（isolate 内存级）。生产单人使用不会触达；本地连跑多套测试会耗尽配额，重启 wrangler 即可。

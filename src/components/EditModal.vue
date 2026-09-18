@@ -3,6 +3,7 @@ import { ref, watch, computed, inject } from 'vue'
 import ImageCropper from './ImageCropper.vue'
 import SiteLibrary from './SiteLibrary.vue'
 import { probeImageBed, uploadImage } from '../composables/sync'
+import { textIconChars } from '../utils/textIcon'
 import {
   normalizeSiteUrl,
   isPrivateHost,
@@ -37,6 +38,92 @@ const showLibrary = ref(false)
 let autoFetchTimer = null
 let skipAutoUrl = ''
 let lastNameAuto = ''
+
+// ---- 模糊搜索建议（关键词 → 站点库命中 + 猜出来的域名）----
+const suggestOpen = ref(false)
+const suggestLoading = ref(false)
+const suggestItems = ref([])
+const suggestDomains = ref([])
+const suggestIndex = ref(-1)
+let suggestTimer = null
+let suggestSeq = 0
+
+const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, '') } catch { return u } }
+const suggestTotal = computed(() => suggestItems.value.length + suggestDomains.value.length)
+
+// 什么算「关键词」：不含点和斜杠的短输入（taobao、知乎、chatgpt）。带点的当域名走自动获取。
+function looksLikeKeyword(v) {
+  const s = v.trim()
+  return s.length > 0 && s.length <= 40 && !/[./\\:]/.test(s)
+}
+
+async function loadSuggestions(kw) {
+  const my = ++suggestSeq
+  suggestLoading.value = true
+  suggestOpen.value = true
+  try {
+    const res = await fetch(`/api/site-suggest?q=${encodeURIComponent(kw)}`)
+    const d = await res.json()
+    if (my !== suggestSeq) return // 已被更新的输入取代
+    suggestItems.value = d.library || []
+    suggestDomains.value = d.domains || []
+    suggestIndex.value = suggestTotal.value ? 0 : -1
+  } catch {
+    if (my === suggestSeq) { suggestItems.value = []; suggestDomains.value = [] }
+  } finally {
+    if (my === suggestSeq) suggestLoading.value = false
+  }
+}
+
+function closeSuggest() {
+  suggestOpen.value = false
+  suggestIndex.value = -1
+}
+
+// 失焦后稍等再关：留出点击下拉项的时间（下拉项自己也用了 mousedown.prevent）
+function closeSuggestSoon() {
+  setTimeout(() => { suggestOpen.value = false }, 180)
+}
+
+function pickSuggestItem(it) {
+  closeSuggest()
+  onLibraryPick({
+    name: it.name,
+    url: it.url,
+    icon: it.icon || '',
+    description: it.description || '',
+    suggestedGroup: '',
+  })
+}
+
+function pickSuggestDomain(d) {
+  closeSuggest()
+  url.value = d
+  autoFetch(false) // 立刻去取标题（抓不到会用域名预填）和图标
+}
+
+function pickActiveSuggest() {
+  if (suggestIndex.value < 0) return
+  const i = suggestIndex.value
+  if (i < suggestItems.value.length) pickSuggestItem(suggestItems.value[i])
+  else pickSuggestDomain(suggestDomains.value[i - suggestItems.value.length])
+}
+
+function onUrlKeydown(e) {
+  if (!suggestOpen.value || !suggestTotal.value) return
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    suggestIndex.value = (suggestIndex.value + 1) % suggestTotal.value
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    suggestIndex.value = (suggestIndex.value - 1 + suggestTotal.value) % suggestTotal.value
+  } else if (e.key === 'Enter' && suggestIndex.value >= 0) {
+    e.preventDefault()
+    pickActiveSuggest()
+  } else if (e.key === 'Escape') {
+    closeSuggest()
+  }
+}
 
 const isEditing = computed(() => props.editIndex >= 0)
 const modalTitle = computed(() => isEditing.value ? '编辑项目' : '新增项目')
@@ -81,10 +168,22 @@ watch(() => props.visible, (val) => {
 
 // 输入链接后自动获取标题 + 图标（防抖，静默）
 watch(url, (val) => {
+  clearTimeout(suggestTimer)
   if (val.trim() === skipAutoUrl) return
   clearTimeout(autoFetchTimer)
   const u = val.trim()
-  if (!u || !parseDomain(u)) return
+  if (!u) { closeSuggest(); return }
+  // 关键词（taobao / 知乎）→ 联想搜索；不拿 https://taobao 去白跑一趟自动获取
+  if (looksLikeKeyword(u)) {
+    suggestTimer = setTimeout(() => loadSuggestions(u), 300)
+    return
+  }
+  closeSuggest()
+  const host = parseDomain(u)
+  if (!host) return
+  // 只像「完整域名」时才自动抓取：带点（含 IP）或带端口（内网 nas:5000）
+  const looksLikeHost = host.includes('.') || /:\d+\/?$/.test(u)
+  if (!looksLikeHost) return
   autoFetchTimer = setTimeout(() => autoFetch(true), 800)
 })
 
@@ -131,6 +230,12 @@ async function autoFetch(silent = false) {
     } else {
       const res = await fetch(`/api/meta?url=${encodeURIComponent(normalized)}`, { signal: ctrl.signal })
       data = await res.json()
+      // 标题抓不到（整站反爬，如 chatgpt.com）时用域名预填，别让名称栏空着——和下面
+      // 内网那条路径一样的套路，用户可改。
+      if (!data.title) {
+        data.title = new URL(normalized).hostname.replace(/^www\./, '')
+        data.titleGuessed = true
+      }
     }
     clearTimeout(timer)
 
@@ -287,9 +392,49 @@ function onLibraryPick(site) {
         </button>
       </div>
       <div class="form-group">
-        <label>链接 <span class="label-hint">（粘贴后自动识别名称与图标）</span></label>
+        <label>链接 <span class="label-hint">（粘贴链接自动识别，或输入关键词搜索）</span></label>
         <div class="input-row">
-          <input type="text" class="form-input" v-model="url" placeholder="粘贴链接，如 github.com">
+          <div class="url-field">
+            <input
+              type="text" class="form-input" v-model="url"
+              placeholder="粘贴链接，或搜关键词，如 github / 知乎"
+              autocomplete="off"
+              @keydown="onUrlKeydown"
+              @blur="closeSuggestSoon"
+            >
+            <!-- 模糊搜索联想：站点库命中在前，其次是 DoH 猜出来的域名 -->
+            <div v-if="suggestOpen && (suggestLoading || suggestTotal)" class="suggest-pop">
+              <div v-if="suggestLoading" class="suggest-tip">搜索中…</div>
+              <template v-else>
+                <button
+                  v-for="(it, i) in suggestItems" :key="'lib' + it.id"
+                  type="button" class="suggest-row" :class="{ on: suggestIndex === i }"
+                  @mousedown.prevent="pickSuggestItem(it)"
+                >
+                  <img
+                    v-if="it.icon" :src="it.icon" class="suggest-icon" loading="lazy"
+                    referrerpolicy="no-referrer"
+                    @error="$event.target.style.display = 'none'"
+                  >
+                  <span v-else class="suggest-icon suggest-icon-ph">{{ textIconChars(it.name) }}</span>
+                  <span class="suggest-name">{{ it.name }}</span>
+                  <span class="suggest-host">{{ hostOf(it.url) }}</span>
+                </button>
+                <div v-if="suggestDomains.length" class="suggest-sep">
+                  可能是这些站点{{ suggestItems.length ? '' : '（点一下获取标题和图标）' }}
+                </div>
+                <button
+                  v-for="(d, j) in suggestDomains" :key="d"
+                  type="button" class="suggest-row" :class="{ on: suggestIndex === suggestItems.length + j }"
+                  @mousedown.prevent="pickSuggestDomain(d)"
+                >
+                  <span class="suggest-icon suggest-icon-ph">🌐</span>
+                  <span class="suggest-name">{{ d }}</span>
+                  <span class="suggest-host">取标题 + 图标</span>
+                </button>
+              </template>
+            </div>
+          </div>
           <button class="btn-text fetch-btn" @click="showLibrary = true">站点库</button>
           <button
             class="btn-text fetch-btn"
@@ -344,3 +489,73 @@ function onLibraryPick(site) {
     @pick="onLibraryPick"
   />
 </template>
+
+<style scoped>
+/* 关键词联想下拉：贴在链接输入框下方 */
+.url-field { position: relative; flex: 1; }
+.url-field .form-input { width: 100%; }
+
+.suggest-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: var(--shadow-pop);
+}
+
+.suggest-tip { padding: 10px 12px; font-size: 13px; color: var(--text-3); }
+
+.suggest-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.suggest-row:hover, .suggest-row.on { background: var(--surface-hover); }
+
+.suggest-icon {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 6px;
+  object-fit: contain;
+  background: rgba(255, 255, 255, 0.06);
+}
+.suggest-icon-ph {
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.suggest-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.suggest-host { flex: none; font-size: 12px; color: var(--text-3); }
+
+.suggest-sep {
+  margin: 6px 9px 2px;
+  font-size: 11.5px;
+  color: var(--text-3);
+}
+</style>
