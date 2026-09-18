@@ -385,6 +385,14 @@ function openAddModal() {
   showEditModal.value = true
 }
 
+// 从设置抽屉里跳到别的面板（新增站点 / 搜索 / 内置导航 / 账号…）时先把抽屉收起来：
+// 抽屉和弹窗的层级一样（都是 z-index 1000），而抽屉在 DOM 里更靠后，
+// 手机上（抽屉几乎占满屏）会把刚打开的弹窗整个盖住。
+function openFromSettings(fn) {
+  showSettingsModal.value = false
+  fn()
+}
+
 function openEditModal(index) {
   editingIndex.value = index
   showEditModal.value = true
@@ -827,14 +835,14 @@ onUnmounted(() => {
     :view="viewMode"
     @close="showSettingsModal = false"
     @saved="saveConfig"
-    @add-site="openAddModal"
-    @search-sites="showSearchModal = true"
-    @builtin-library="showBuiltinModal = true"
+    @add-site="openFromSettings(openAddModal)"
+    @search-sites="openFromSettings(() => { showSearchModal = true })"
+    @builtin-library="openFromSettings(() => { showBuiltinModal = true })"
     @toggle-theme="toggleTheme"
     @set-view="setViewMode"
-    @login="showAuthModal = true"
-    @account="openAccount"
-    @admin="openAdmin"
+    @login="openFromSettings(() => { showAuthModal = true })"
+    @account="openFromSettings(openAccount)"
+    @admin="openFromSettings(openAdmin)"
     @logout="doLogout"
     @sync="syncNow"
   />

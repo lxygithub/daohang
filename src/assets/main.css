@@ -697,7 +697,8 @@ html[data-theme="light"] .card-icon.icon-text-mode {
   background: rgba(4, 6, 12, 0.55);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
-  z-index: 1000;
+  /* 必须比设置抽屉（1000）高：否则抽屉开着时打开的弹窗会被它盖住 */
+  z-index: 1200;
   align-items: center;
   justify-content: center;
   padding: 20px;
