@@ -1449,52 +1449,74 @@ html[data-theme="light"] .card-icon.icon-text-mode {
 /* Search suggestions panel */
 .search-suggest {
   position: absolute;
-  top: calc(100% + 10px);
+  top: calc(100% + 8px);
   left: 0;
   right: 0;
-  background: var(--panel);
-  border: 1px solid var(--border-strong);
-  border-radius: 18px;
-  padding: 8px;
-  box-shadow: var(--shadow-pop);
+  /* 跟搜索框用同一套玻璃质感：半透明 + 背景模糊，别做成一块实心黑板 */
+  background: rgba(18, 22, 32, calc(0.55 * var(--sb-opacity, 1)));
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 6px;
+  backdrop-filter: blur(18px) saturate(1.15);
+  -webkit-backdrop-filter: blur(18px) saturate(1.15);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
   z-index: 1090;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  max-height: 320px;
+  max-height: 264px;
   overflow-y: auto;
+}
+html[data-theme="light"] .search-suggest {
+  background: rgba(255, 255, 255, calc(0.78 * var(--sb-opacity, 1)));
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.14);
 }
 .suggest-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
   width: 100%;
-  padding: 11px 14px;
+  padding: 8px 12px;
   border: none;
-  border-radius: 12px;
+  border-radius: 11px;
   background: transparent;
   color: var(--text-2);
-  font-size: 0.92rem;
+  font-size: 0.86rem;
   text-align: left;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
-.suggest-item:hover { background: rgba(255, 255, 255, 0.06); color: var(--text); }
+.suggest-item:hover { background: rgba(255, 255, 255, 0.07); color: var(--text); }
 .suggest-item .suggest-name {
   color: var(--text);
-  font-weight: 600;
+  font-weight: 500;
+  font-size: 0.88rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .suggest-item .suggest-host {
-  font-size: 0.78rem;
+  flex: none;
+  font-size: 0.74rem;
   color: var(--text-3);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.suggest-item.search svg { width: 16px; height: 16px; flex-shrink: 0; color: var(--accent); }
+/* 「直接搜索」那一行做次要样式，别跟站点候选抢视觉重量 */
+.suggest-item.search { color: var(--text-3); }
+.suggest-item.search .suggest-name { color: var(--text-2); font-weight: 400; }
+.suggest-item.search svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--accent); }
+.suggest-key {
+  flex: none;
+  margin-left: auto;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.7rem;
+  line-height: 1.5;
+  color: var(--text-3);
+}
 
 .menu-pop-enter-active, .menu-pop-leave-active { transition: opacity 0.18s, transform 0.18s; }
 .menu-pop-enter-from, .menu-pop-leave-to { opacity: 0; transform: translateY(-6px) scale(0.97); }

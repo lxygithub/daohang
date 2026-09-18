@@ -242,11 +242,17 @@ const effectiveFilter = computed(() =>
 )
 
 // Search suggestions: local matches + direct-search action
+// dismissed：用户按 Esc 或点了别处就收起来（之前只能清空输入才消失，等于关不掉）
+const suggestDismissed = ref(false)
 const showSuggestions = computed(() =>
   searchPrefs.value.suggestions &&
   !searchPrefs.value.hidden &&
+  !suggestDismissed.value &&
   searchQuery.value.trim().length > 0
 )
+
+// 重新输入 → 允许再次弹出
+watch(searchQuery, () => { suggestDismissed.value = false })
 
 const suggestionMatches = computed(() => {
   const q = searchQuery.value.trim().toLowerCase()
@@ -288,6 +294,7 @@ function handleKeydown(e) {
     return
   }
   if (e.key === 'Escape') {
+    if (showSuggestions.value) { suggestDismissed.value = true; return }
     if (showSearchModal.value) { showSearchModal.value = false; return }
     if (showSettingsModal.value) { showSettingsModal.value = false; return }
     if (editMode.value) { editMode.value = false; return }
@@ -340,6 +347,10 @@ function handleDocClick(e) {
   // Close engine menu when clicking outside
   if (showEngineMenu.value && !e.target.closest('.engine-anchor')) {
     showEngineMenu.value = false
+  }
+  // 点搜索框以外的任何地方，把联想条收起来
+  if (showSuggestions.value && !e.target.closest('.search-box')) {
+    suggestDismissed.value = true
   }
   if (!editMode.value) return
   // Clicking a card or inside a modal keeps edit mode; blank space exits.
@@ -730,6 +741,7 @@ onUnmounted(() => {
                 <line x1="21" y1="21" x2="16.2" y2="16.2"/>
               </svg>
               <span class="suggest-name">使用 {{ engine.name }} 搜索「{{ searchQuery.trim() }}」</span>
+              <kbd class="suggest-key">↵</kbd>
             </button>
           </div>
         </transition>
