@@ -381,12 +381,12 @@ Pages 项目已于 2026-09-17 删除，回退路径变成以下两条：
 Cloudreve 那批依赖自建 Cloudreve 实例在线，Telegram 那批依赖对应 bot/频道。任一端不可用时，对应图标会 404
 （前端回退首字图标）。抽查可用性：Cloudreve 10/10、Telegram 5/5 均 200。
 
-### 去重：现状与工具
+### 去重：结果与工具
 
-`builtin-icons/` 共 **29,667** 个文件，而按内容去重只需要 **16,536** 个：
+`builtin-icons/` 原有 **29,667** 个文件，按内容去重后只需要 **22,813** 个：
 
-- **978 个**是「同名 sha1 文件」的重复（同一内容被上传多次，文件名即可判定，无需下载）；
-- 其余冗余藏在旧命名的 12,153 个文件里——**它们的元数据没有哈希**（`files.metadata` 只有 FileName/FileSize/Width/Height/Channel 等），
+- **6,869** 个是重复内容，其中 **6,854 个可删**；剩下 **15 个**虽然和别人同内容，但两份都被库引用（不同行各指一份），保守起见都留着；
+- 冗余大多藏在旧命名的文件里——**它们的元数据没有哈希**（`files.metadata` 只有 FileName/FileSize/Width/Height/Channel 等），
   必须下载后自己算 sha1 才能判定。
 
 已内置只读扫描工具（不写 D1，不消耗写额度）：
@@ -404,14 +404,55 @@ node scripts/imgbed-dedupe.mjs report
 **被数据库引用 > sha1 命名 > 时间戳最早**，且**凡是被 `db-referenced-ids.txt` 引用的文件一律不删**
 （该清单为导出命令：`SELECT substring(icon from length('https://img-bed.ieoc.top/file/')+1) FROM daohang.builtin_sites WHERE icon LIKE 'https://img-bed.ieoc.top/%'`）。
 
-**当前进度**：扫描到 **22,714 / 29,667** 个指纹（sha1 命名的直接取文件名，其余约 5,200 个已下载算出），暂存在本地缓存里，明天续跑即可。
+删除工具（`scripts/imgbed-dedupe-delete.mjs`，逐批落盘、可断点续跑、自动跳过已删）：
 
-### 明天的执行清单（按序）
+```bash
+# ⚠️ 需要 D1 写额度（UTC 零点 = 北京 08:00 重置；删除会给 files 与 index_operations 记账）
+# ⚠️ 删除会同时清理 Cloudreve/Telegram 后端实体；先删 20-50 个验证一轮再批量
+IMG_ADMIN_SESSION=<图床 admin_session> node scripts/imgbed-dedupe-delete.mjs --batch=50 --sleep=500
+```
 
-1. **续跑扫描**：`scan --conc=32 --budget=420`（反复执行直到「待下载 0」，约剩 7,000 个文件）；
-2. **出报告**：`report`，确认「可删除文件数」与「因库引用跳过」的数字；
-3. **执行删除**：⚠️ 需要 **D1 写额度**（UTC 零点 = 北京 08:00 重置；删除会给 `files` 与 `index_operations` 记账），
-   且删除动作会同时作用到 Cloudreve/Telegram 后端，**建议先删 20-50 个验证一轮**，确认站点图标没受影响再批量；
-4. **补完剩余图标**（可选）：1,194 条未转存的需要重新 prefetch + upload，同样受写额度约束，别和上面两步排在同一天；
-5. **顺手记一笔**：本轮还修了站点库关键词搜索（`q` 未映射到 `listBuiltinSites` 的 `qstr`，导致搜索返回全量），
+**去重结果（2026-09-18）**：计划内的 **6,854 个全部删除成功**，`builtin-icons` 从 29,667 → **22,813**；
+逐条比对图床 `files` 表与运行库引用（19,066 个），**0 缺失**。
+
+### 补完剩余图标（2026-09-18 完成）
+
+原先仍在原站直链的 1,194 行（Infinity New Tab 的 `infinitypro-img` / `infinityicon` 两个 CDN）已全部转存，
+用 `scripts/imgbed-backfill-rest.mjs`（下载 → 内容 sha1 去重 → 上图床；命中已有 `icon-hash-index.json` 就复用，不重复上传）：
+
+```bash
+# 1) 导出行（只读；注意是运行库 daohang，不是 forgotit 库里的 daohang schema）
+docker exec -i forgotit-postgres psql -U forgotit -d daohang -t -A \
+  -c "SELECT json_agg(json_build_object('id',id,'name',name,'url',url,'icon',icon)) \
+      FROM daohang.builtin_sites WHERE icon NOT LIKE 'https://img-bed.ieoc.top/%'" \
+  > scripts/data/pending-icons.json
+
+# 2) 下载 + 上传（重复跑会自动重试上一轮的失败项）
+DH_COOKIE='nav_session=<daohang 登录 cookie>' node scripts/imgbed-backfill-rest.mjs run --conc=6 --budget=900
+
+# 3) 源图标本身已死的行（`/undefined` 占位、失效的 user-share-icon）改用站点自身 favicon
+DH_COOKIE='...' node scripts/imgbed-backfill-rest.mjs favicon --conc=3
+
+# 4) 落库（SQL 里带 `AND icon = '<原值>'` 守卫，幂等）
+docker exec -i forgotit-postgres psql -U forgotit -d daohang -v ON_ERROR_STOP=1 < scripts/data/backfill-rest.sql
+```
+
+**结果**：内置站点库 **19,620 / 19,626**（99.97%）指向图床外链；剩下 6 条连站点自己的 favicon 都取不到，
+`icon` 置空交给前端首字图标兜底（`NavCard.vue` 的 `isTextIcon` 分支），不再让浏览器去请求必死的链接。
+
+### 本轮踩的坑
+
+1. **daohang 的运行库是 `daohang` 数据库，不是 `forgotit` 库里的 `daohang` schema**。
+   网关 `GATEWAY_DAOHANG_PG_RW_URL` 指向 `.../daohang`，Worker 侧由 `SQL_GATEWAY_TARGET=daohang-postgres` 指定；
+   `forgotit` 库里那份 `daohang`/`wearwhat` schema 是当初迁移试建留下的副本（`wrangler.toml` 第 72 行有注记），
+   **往它里面写等于没改**。动库前先确认库名，别只看 `\dn` 出来的 schema 列表。
+2. **图床批量删除内部并发是 10，会撞 D1 写锁**：`delete/batch` 一次传 500 时约一半返回笼统的
+   `Delete file failed`（Telegram 31%、WebDAV 47% 的失败率接近，说明是公共环节而非后端差异）。
+   降到 **批次 50 + 批间 sleep 500ms** 后，剩下 2,970 个一次跑完 **0 失败**。
+3. **图床偶发 500/503**：上传（`/api/upload` 透传回来是 502）和读外链都会零星遇到，退避重试即可；
+   线上抽样看到的 503 重试后都是 200，不用当成数据坏了。
+4. **`db-referenced-ids.txt` 必须从运行库导出**：本轮开工时它来自那份副本，导致 1 个仍被运行库引用的文件被删
+   （`1789570257011_icon_b7098d1d1dc1cc71.png`）。发现后把该行改指到同内容的保留项
+   （`1789608219671_b7098d1d1dc1cc71...png`），并全量重比对，现已 0 缺失。
+5. **顺手记一笔**：站点库关键词搜索修复（`q` 未映射到 `listBuiltinSites` 的 `qstr`，导致搜索返回全量），
    提交 `d3b640e`，实测 `q=Amazon → 7 条`、`q=腾讯 → 80 条`。
