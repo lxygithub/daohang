@@ -7,6 +7,8 @@
   --bg: #0d1017;
   --surface: rgba(255, 255, 255, 0.045);
   --surface-hover: rgba(255, 255, 255, 0.08);
+  /* 更淡一档：图标布局的悬浮底色用它（卡片自己的 --surface 太实，亮色下尤其明显） */
+  --surface-faint: rgba(255, 255, 255, 0.022);
   --panel: rgba(21, 25, 36, 0.88);
   --border: rgba(255, 255, 255, 0.09);
   --border-strong: rgba(255, 255, 255, 0.18);
@@ -34,6 +36,8 @@ html[data-theme="light"] {
   --bg: #eef1f7;
   --surface: rgba(255, 255, 255, 0.66);
   --surface-hover: rgba(255, 255, 255, 0.92);
+  /* 亮色主题也可能配深色壁纸（比如深绿渐变），这个值按"叠在深色上也只是一层淡淡的雾"来定 */
+  --surface-faint: rgba(255, 255, 255, 0.09);
   --panel: rgba(255, 255, 255, 0.94);
   --border: rgba(15, 23, 42, 0.09);
   --border-strong: rgba(15, 23, 42, 0.18);
@@ -1544,7 +1548,8 @@ html[data-theme="light"] .search-suggest {
 }
 
 .layout-phone .card:hover {
-  background: var(--surface);
+  /* 原来用 --surface：亮色主题下那是 0.66 的白，悬浮时像贴了块白卡，太抢眼 */
+  background: var(--surface-faint);
   border-color: transparent;
   box-shadow: none;
   transform: translateY(-3px);
@@ -2497,4 +2502,26 @@ html[data-theme="light"] .user-menu-item.danger:hover { color: #c0392b; }
 /* 小屏：齿轮往里收一点 */
 @media (max-width: 480px) {
   .gear-fab { right: 12px; top: 12px; }
+}
+
+/* ============================================================
+   右下角风车：去掉圆形底盘
+   亮色主题下 .fab 是 rgba(255,255,255,.9)，风车就成了一个白圆盘，很突兀；
+   这里只留风车本身，悬浮时给一点点反馈（不再画实心圆）。
+   ============================================================ */
+.fab-windmill,
+.fab-windmill:hover {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.fab-windmill { opacity: 0.75; transition: opacity 0.25s var(--ease), transform 0.2s var(--ease); }
+.fab-windmill:hover { opacity: 1; }
+html[data-theme="light"] .fab-windmill,
+html[data-theme="light"] .fab-windmill:hover {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
 }
