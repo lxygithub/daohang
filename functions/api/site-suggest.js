@@ -26,10 +26,21 @@ const LIBRARY_SCAN = 24;
 const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, "") } catch { return String(u) } };
 const pathDepth = (u) => { try { return new URL(u).pathname.split("/").filter(Boolean).length } catch { return 9 } };
 
-// 爬来的 name 偶尔是坏的（把 `</title><meta ...` 也抓进来了）：太长的或带标签的用域名代替
+// 爬来的 name 偶尔是坏的（把 `</title><meta ...` 也抓进来了）。规则与
+// scripts/clean-builtin-names.mjs 保持一致：去标签 / 解实体 / 去乱码 / 归一空白，
+// **不按长度换成域名**——长标题是站点真实标题，列表里本来就省略号截断，
+// 凭长度替换会把 `Stack Overflow - Where Developers Learn…` 这种误伤成 stackoverflow.com。
 function cleanName(name, url) {
-  const s = String(name || "").replace(/\s+/g, " ").trim();
-  if (!s || s.length > 40 || /[<>"'`]|<\/?[a-z]/i.test(s)) return hostOf(url);
+  let s = String(name || "");
+  const tagAt = s.search(/<\/?[a-zA-Z!/]/);
+  if (tagAt >= 0) s = s.slice(0, tagAt);
+  s = s
+    .replace(/&(amp|lt|gt|quot|#39|apos|nbsp);/g, (m) => ({ "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'", "&apos;": "'", "&nbsp;": " " })[m] || m)
+    .replace(/&#(\d+);/g, (m, d) => { try { return String.fromCodePoint(Number(d)) } catch { return m } })
+    .replace(/\uFFFD+/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!s) return hostOf(url);
   return s;
 }
 

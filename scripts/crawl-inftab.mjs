@@ -85,12 +85,27 @@ function dedupKey(u) {
   } catch { return u }
 }
 
+// 源数据（inftab）自己的 name 字段里就混着 HTML 碎片，例如
+//   `知乎 - 有问题上知乎</title><meta data-react-helmet="true" name="keyw`
+// 直接入库会在卡片上显示一串标签。这里统一去标签 / 解实体 / 去乱码 / 归一空白。
+// 历史数据已由 scripts/clean-builtin-names.mjs 清洗过，这段是为了再爬时不再引入。
+const ENTITIES = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'", '&apos;': "'", '&nbsp;': ' ' }
+function sanitizeText(raw, maxLen) {
+  let s = String(raw || '')
+  // 只在 `<` 后面跟着标签特征时才截断：`WebHome < Main < TWiki` 这种真标题不能被误砍
+  const tagAt = s.search(/<\/?[a-zA-Z!/]/)
+  if (tagAt >= 0) s = s.slice(0, tagAt)
+  s = s.replace(/&(amp|lt|gt|quot|#39|apos|nbsp);/g, (m) => ENTITIES[m] || m)
+  s = s.replace(/&#(\d+);/g, (m, d) => { try { return String.fromCodePoint(Number(d)) } catch { return m } })
+  return s.replace(/\uFFFD+/g, '').replace(/\s+/g, ' ').trim().slice(0, maxLen)
+}
+
 function cleanItem(item, cat) {
   const url = cleanUrl(extractRealUrl(item))
   if (!url) return null
-  const name = String(item.name || '').trim().replace(/\s+/g, ' ').slice(0, 60)
+  const name = sanitizeText(item.name, 60)
   if (!name) return null
-  const desc = String(item.description || item.descrption || '').trim().replace(/\s+/g, ' ').slice(0, 200)
+  const desc = sanitizeText(item.description || item.descrption, 200)
   const src = String(item.src || '').trim()
   const iconSrc = /^https?:\/\//.test(src) ? src : ''
   const rate = Math.max(0, parseInt(item.rate, 10) || 0)

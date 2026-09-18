@@ -175,6 +175,37 @@ npm run builtin:import   # 5. 全量导入 D1（upsert 幂等，需先 re-arm �
 
 **图床端遗留清理（低优先级）**：图床上存在同内容重复文件，两个成因：①502 风暴期「上传成功但响应丢失→重试」产生的孤儿文件（从未记录在状态文件）；②09-16 第二轮约 3,764 张的上传记录随沙箱回滚丢失（URL 无从恢复），本轮重传产生同内容重复。v3 上传文件名为确定性 `{sha1}.{ext}`（图床外链形如 `{时间戳}_{sha1}.{ext}`），**图床管理端按文件名后缀排序即可筛出同 sha1 重复**：保留最新一条、删除其余。若可提供图床管理 API Token，也可脚本化对账清理。
 
+### 名字/描述清洗（2026-09-18）
+
+数据源（inftab）自己的 `name` 字段里就混着 HTML 碎片，历史入库时只做了 trim + 空白归一 + 截断，
+没去标签，典型如 `知乎 - 有问题上知乎</title><meta data-react-helmet="true" name="keyw`；
+另外还有 HTML 实体（`Lowe&apos;s`）、导入损坏的乱码（U+FFFD）、一批 SEO 堆词的超长标题。
+
+清洗脚本：`scripts/clean-builtin-names.mjs`（幂等，可反复跑，直到「需要改动 0 行」）。
+
+```bash
+node scripts/clean-builtin-names.mjs           # 干跑：打印规则统计 + 抽样 + 生成 SQL 与备份
+node scripts/clean-builtin-names.mjs --apply   # 执行（自动写原值备份 + 执行后自检）
+```
+
+规则（保守，不做不可逆的硬砍）：
+
+1. `<` 后紧跟标签特征（`</title`、`<meta`、`<!--`）→ 从这里截断
+   （`WebHome < Main < TWiki` 这种拿 `<` 当分隔符的真标题不受影响）；
+2. 解 HTML 实体；3. 空白归一 + 去首尾；4. 名字本身是网址 → 换成域名；
+5. 超过 30 字且前 30 字内出现分隔符（`" - "` / `" | "` / `" · "` …）→ 取品牌名
+   （`Stack Overflow - Where Developers Learn…` → `Stack Overflow`）；**没有分隔符的长标题保持原样**
+   （卡片本来就会省略号截断）；
+6. 清洗后为空 → 退回域名；7. 含乱码 U+FFFD → 能取到干净前缀就取前缀，否则换域名；
+8. 描述只做 1~4，另外「有效字母不足 2 个」（`无` / `123` / `。` / `👍🏻`）视为噪声清空。
+
+产物在 `scripts/data/`：`clean-names.sql`（每条都带原值守卫，幂等）、`clean-names-backup.json`（原值，可回滚）。
+执行前另外存了整表：`/mnt/datadisk/yuan/backups/builtin_sites-before-clean-20260918.sql`。
+
+**结果**：改动 **900 行**（名字 842 / 描述 59）；清洗后「名字含标签/实体/乱码/网址」= 0、
+「描述含标签/实体/乱码」= 0；仍剩 624 条名字超过 30 字（无分隔符可切，是正常长标题，故意留着）。
+`scripts/crawl-inftab.mjs` 也加了同一套 `sanitizeText`，以后再爬不会重新引入。
+
 ### 新增站点时的模糊搜索（2026-09-18）
 
 「新增项目」的链接框现在支持「输入关键词出候选」，实现见 `functions/api/site-suggest.js`：
