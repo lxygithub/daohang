@@ -8,14 +8,23 @@ import {
   loadSearch, saveSearch, applySearch,
   loadHero, saveHero, applyHero,
 } from '../composables/usePrefs'
-import { probeImageBed, uploadImage, authed } from '../composables/sync'
+import { probeImageBed, uploadImage, authed, userEmail, isAdmin } from '../composables/sync'
+import { aiSettings, saveAiSettings, aiGroupSites, DEFAULT_AI } from '../composables/useAi'
 
 const props = defineProps({
   visible: Boolean,
   background: { type: Object, default: null },
+  // 明暗主题 / 同步状态由 App 管，设置里只做展示与转发
+  light: { type: Boolean, default: false },
+  syncing: { type: Boolean, default: false },
 })
 
-const emit = defineEmits(['close', 'saved'])
+// 原先右上角那一排浮标的动作，现在全部由设置抽屉转发出去
+const emit = defineEmits([
+  'close', 'saved',
+  'add-site', 'search-sites', 'builtin-library', 'toggle-theme', 'toggle-view',
+  'login', 'account', 'admin', 'logout', 'sync',
+])
 const ensureVerified = inject('ensureVerified')
 const showToast = inject('showToast')
 const configRef = inject('config')
@@ -37,6 +46,55 @@ const migrateProgress = ref('')
 
 // 图标大小滑条以百分比展示：10% = 48px，100% = 500px
 const sizePct = computed(() => pxToPct(grid.value.size))
+
+// ---- AI 自动分组（Key 只在本机 localStorage；没配置就不启用）----
+const aiForm = ref({ ...DEFAULT_AI, ...aiSettings.value })
+const aiBusy = ref(false)
+const aiProgress = ref('')
+const aiReady = computed(() =>
+  Boolean(aiForm.value.apiKey.trim() && aiForm.value.model.trim() && aiForm.value.apiBase.trim())
+)
+
+function saveAi() {
+  saveAiSettings(aiForm.value)
+  showToast('大模型设置已保存（只存在本机浏览器）')
+}
+
+async function runAiGroupAll() {
+  if (aiBusy.value) return
+  const services = configRef?.value?.services || []
+  if (!services.length) { showToast('还没有站点'); return }
+  if (!aiReady.value) { showToast('请先填好接口地址、模型名和 API Key'); return }
+  saveAiSettings(aiForm.value) // 顺手落盘，免得改了没保存
+  aiBusy.value = true
+  try {
+    const out = {}
+    const CHUNK = 60 // 站点多的时候分批，免得一次塞太长拖慢/超时
+    for (let i = 0; i < services.length; i += CHUNK) {
+      const chunk = services.slice(i, i + CHUNK)
+      aiProgress.value = `分组中 ${Math.min(i + CHUNK, services.length)}/${services.length}`
+      const known = [...new Set([
+        ...services.map(s => (s.group || '').trim()).filter(Boolean),
+        ...Object.values(out),
+      ])]
+      const map = await aiGroupSites(chunk.map(s => ({ id: s.id, name: s.name, url: s.url })), known)
+      Object.assign(out, map)
+    }
+    let n = 0
+    for (const s of services) {
+      const g = out[s.id]
+      if (g) { s.group = g; n++ }
+    }
+    await saveConfig()
+    emit('saved')
+    showToast(n ? `AI 已为 ${n} 个站点分组` : 'AI 没有给出可用的分组')
+  } catch (e) {
+    showToast('AI 分组失败：' + (e?.message || ''))
+  } finally {
+    aiBusy.value = false
+    aiProgress.value = ''
+  }
+}
 
 function onSizeSlider(e) {
   grid.value = { ...grid.value, size: pctToPx(e.target.value) }
@@ -539,6 +597,76 @@ function pickImport() {
         </svg>
       </button>
     </div>
+
+      <!-- 快捷操作：原来右上角那排浮标都搬到这里了，右上角只留一个淡齿轮 -->
+      <div class="form-group">
+        <label>快捷操作</label>
+        <div class="quick-grid">
+          <button class="quick-btn" @click="emit('add-site')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <span>新增站点</span><i>Ctrl+K</i>
+          </button>
+          <button class="quick-btn" @click="emit('search-sites')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.2" y2="16.2"/></svg>
+            <span>搜索站点</span><i>Ctrl+F</i>
+          </button>
+          <button class="quick-btn" @click="emit('builtin-library')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+            <span>内置导航</span><i>按分类挑选</i>
+          </button>
+          <button class="quick-btn" @click="emit('toggle-theme')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="4"/>
+              <line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/>
+              <line x1="4.93" y1="4.93" x2="6.34" y2="6.34"/><line x1="17.66" y1="17.66" x2="19.07" y2="19.07"/>
+              <line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/>
+              <line x1="4.93" y1="19.07" x2="6.34" y2="17.66"/><line x1="17.66" y1="6.34" x2="19.07" y2="4.93"/>
+            </svg>
+            <span>{{ light ? '切到暗色' : '切到亮色' }}</span><i>当前{{ light ? '亮色' : '暗色' }}</i>
+          </button>
+          <button class="quick-btn" @click="emit('toggle-view')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+            <span>切换视图</span><i>网格 / 字母</i>
+          </button>
+        </div>
+      </div>
+
+      <!-- 账号：原「用户菜单」的四个动作 -->
+      <div class="form-group">
+        <label>账号</label>
+        <div class="acct-card">
+          <div class="acct-mail">{{ authed ? userEmail : '未登录（数据只存在本机）' }}</div>
+          <div class="acct-actions">
+            <template v-if="authed">
+              <button class="btn-text fetch-btn" :disabled="syncing" @click="emit('sync')">{{ syncing ? '同步中…' : '立即同步' }}</button>
+              <button class="btn-text fetch-btn" @click="emit('account')">账号管理</button>
+              <button v-if="isAdmin" class="btn-text fetch-btn" @click="emit('admin')">用户管理</button>
+              <button class="btn-text fetch-btn danger" @click="emit('logout')">退出登录</button>
+            </template>
+            <button v-else class="btn-text primary" @click="emit('login')">登录 / 注册</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 大模型 API：配好之后「AI 自动分组」才启用 -->
+      <div class="form-group">
+        <label>AI 自动分组 <span class="label-hint">（OpenAI 兼容接口，配好才启用）</span></label>
+        <div class="ai-form">
+          <input class="form-input" v-model="aiForm.apiBase" placeholder="接口地址，如 https://api.deepseek.com/v1" autocomplete="off">
+          <input class="form-input" v-model="aiForm.model" placeholder="模型名，如 deepseek-chat" autocomplete="off">
+          <input class="form-input" type="password" v-model="aiForm.apiKey" placeholder="API Key（只存本机浏览器）" autocomplete="new-password">
+          <div class="ai-row">
+            <button class="btn-text fetch-btn" @click="saveAi">保存</button>
+            <button class="btn-text primary" :disabled="!aiReady || aiBusy" @click="runAiGroupAll">
+              {{ aiBusy ? (aiProgress || '分组中…') : '用 AI 给全部站点分组' }}
+            </button>
+          </div>
+          <p class="ai-tip">
+            Key 只保存在本机 localStorage，不入库、不参与偏好同步；调用时经自家 Worker 转发
+            （国内浏览器直连大模型接口常超时/CORS 被拦）。分组会覆盖现有分组名。
+          </p>
+        </div>
+      </div>
 
       <div class="form-group">
         <label>背景主题</label>

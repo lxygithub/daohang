@@ -1,8 +1,8 @@
 <script setup>
 import { ref, watch, computed, inject } from 'vue'
 import ImageCropper from './ImageCropper.vue'
-import SiteLibrary from './SiteLibrary.vue'
 import { probeImageBed, uploadImage } from '../composables/sync'
+import { aiConfigured, aiGroupSites } from '../composables/useAi'
 import { textIconChars } from '../utils/textIcon'
 import {
   normalizeSiteUrl,
@@ -34,7 +34,9 @@ const showCropper = ref(false)
 const imgbedEnabled = ref(false)
 const uploadingIcon = ref(false)
 const nameTouched = ref(false)
-const showLibrary = ref(false)
+// 自动获取失败（没拿到图标）时，才把「重试获取」按钮亮出来——正常流程是全自动的
+const fetchFailed = ref(false)
+const aiGrouping = ref(false)
 let autoFetchTimer = null
 let skipAutoUrl = ''
 let lastNameAuto = ''
@@ -87,7 +89,7 @@ function closeSuggestSoon() {
 
 function pickSuggestItem(it) {
   closeSuggest()
-  onLibraryPick({
+  applyPick({
     name: it.name,
     url: it.url,
     icon: it.icon || '',
@@ -126,7 +128,7 @@ function onUrlKeydown(e) {
 }
 
 const isEditing = computed(() => props.editIndex >= 0)
-const modalTitle = computed(() => isEditing.value ? '编辑项目' : '新增项目')
+const modalTitle = computed(() => isEditing.value ? '编辑站点' : '新增站点')
 
 // 分组选项（去重）
 const groupOptions = computed(() => {
@@ -145,6 +147,8 @@ watch(() => props.visible, (val) => {
   nameTouched.value = false
   lastNameAuto = ''
   clearTimeout(autoFetchTimer)
+  fetchFailed.value = false
+  closeSuggest()
   if (props.editIndex >= 0) {
     const svc = props.services[props.editIndex]
     if (svc) {
@@ -169,6 +173,7 @@ watch(() => props.visible, (val) => {
 // 输入链接后自动获取标题 + 图标（防抖，静默）
 watch(url, (val) => {
   clearTimeout(suggestTimer)
+  fetchFailed.value = false // 换了链接就收起「重试获取」，等新一轮自动获取的结果
   if (val.trim() === skipAutoUrl) return
   clearTimeout(autoFetchTimer)
   const u = val.trim()
@@ -252,14 +257,21 @@ async function autoFetch(silent = false) {
       faviconPreview.value = data.icon
       got = true
     }
+    // 有图标就算成功；没图标才需要用户点「重试获取」
+    fetchFailed.value = !data.icon
     if (!silent) {
-      if (got && data.titleGuessed) showToast('图标已获取；内网页面读不到标题（浏览器安全策略），名称已按地址预填，可修改')
+      if (got && data.titleGuessed) {
+        showToast(lan
+          ? '图标已获取；内网页面读不到标题（浏览器安全策略），名称已按地址预填，可修改'
+          : '图标已获取；页面标题抓不到（站点反爬），名称已按域名预填，可修改')
+      }
       else if (got) showToast(lan ? '已自动填充（浏览器直连）' : '已自动填充')
       else if (lan && mixedContentBlocked(normalized)) showToast('HTTPS 页面无法读取 HTTP 内网资源（浏览器拦截），建议手动上传图标')
       else if (data.error) showToast(`未能获取（${data.error}），可手动填写`)
       else showToast('未能获取，可手动填写')
     }
   } catch (e) {
+    fetchFailed.value = true
     if (!silent) showToast('获取失败：' + (e?.message || '请手动填写'))
   } finally {
     fetchingFavicon.value = false
@@ -358,9 +370,8 @@ function save() {
   })
 }
 
-// 从站点库选中：回填名称/链接/图标，可选预填分组；不再触发自动获取
-function onLibraryPick(site) {
-  showLibrary.value = false
+// 选中候选（站点库命中）：回填名称/链接/图标，不再触发自动获取
+function applyPick(site) {
   url.value = site.url
   skipAutoUrl = site.url
   name.value = site.name
@@ -374,14 +385,37 @@ function onLibraryPick(site) {
     faviconPreview.value = ''
   }
   if (!group.value.trim() && site.suggestedGroup) group.value = site.suggestedGroup
-  showToast('已从站点库填入，可修改后保存')
+  fetchFailed.value = false
+  showToast('已填入，可修改后保存')
+}
+
+// ---- AI 自动分组（单站点）----
+async function runAiGroup() {
+  if (aiGrouping.value) return
+  const siteName = name.value.trim() || url.value.trim()
+  if (!siteName) { showToast('先填写链接或名称'); return }
+  aiGrouping.value = true
+  try {
+    const groups = groupOptions.value
+    const picked = await aiGroupSites(
+      [{ id: 'this', name: siteName, url: url.value.trim() }],
+      groups,
+    )
+    const g = picked.this
+    if (g) { group.value = g; showToast(`AI 建议分组：${g}`) }
+    else showToast('AI 没能给出分组建议')
+  } catch (e) {
+    showToast('AI 分组失败：' + (e?.message || ''))
+  } finally {
+    aiGrouping.value = false
+  }
 }
 </script>
 
 <template>
   <div class="modal-overlay" :class="{ active: visible }">
     <!-- 闭包控制：仅右上角 × / 取消 / 保存可关闭，点击遮罩空白处不关闭（用户要求） -->
-    <div class="modal">
+    <div class="modal modal-lg">
       <div class="modal-header">
         <h2>{{ modalTitle }}</h2>
         <button class="modal-close" title="关闭" @click="emit('close')">
@@ -409,6 +443,7 @@ function onLibraryPick(site) {
                 <button
                   v-for="(it, i) in suggestItems" :key="'lib' + it.id"
                   type="button" class="suggest-row" :class="{ on: suggestIndex === i }"
+                  :title="`${it.name} · ${hostOf(it.url)}`"
                   @mousedown.prevent="pickSuggestItem(it)"
                 >
                   <img
@@ -426,37 +461,47 @@ function onLibraryPick(site) {
                 <button
                   v-for="(d, j) in suggestDomains" :key="d"
                   type="button" class="suggest-row" :class="{ on: suggestIndex === suggestItems.length + j }"
+                  :title="`${d} · 点击后自动获取标题和图标`"
                   @mousedown.prevent="pickSuggestDomain(d)"
                 >
                   <span class="suggest-icon suggest-icon-ph">🌐</span>
-                  <span class="suggest-name">{{ d }}</span>
-                  <span class="suggest-host">取标题 + 图标</span>
+                  <span class="suggest-name suggest-domain">{{ d }}</span>
                 </button>
               </template>
             </div>
           </div>
-          <button class="btn-text fetch-btn" @click="showLibrary = true">站点库</button>
+          <!-- 正常流程是全自动的：只有自动获取没拿到图标时才需要这张按钮 -->
           <button
+            v-if="fetchFailed"
             class="btn-text fetch-btn"
             :class="{ loading: fetchingFavicon }"
             @click="autoFetch(false)"
             :disabled="fetchingFavicon"
-          >{{ fetchingFavicon ? '获取中…' : '自动获取' }}</button>
+          >{{ fetchingFavicon ? '获取中…' : '重试获取' }}</button>
         </div>
       </div>
       <div class="form-group">
         <label>名称</label>
-        <input type="text" class="form-input" v-model="name" placeholder="服务名称" @input="nameTouched = true">
+        <input type="text" class="form-input" v-model="name" placeholder="站点名称" @input="nameTouched = true">
       </div>
       <div class="form-group">
-        <label>分组 <span class="label-hint">（可选，同组服务归类显示）</span></label>
-        <input
-          type="text"
-          class="form-input"
-          v-model="group"
-          list="group-options"
-          placeholder="如：开发工具 / 媒体 / 网络"
-        >
+        <label>分组 <span class="label-hint">（可选，同组站点归类显示）</span></label>
+        <div class="input-row">
+          <input
+            type="text"
+            class="form-input"
+            v-model="group"
+            list="group-options"
+            placeholder="如：开发工具 / 媒体 / 网络"
+          >
+          <button
+            v-if="aiConfigured()"
+            type="button" class="btn-text fetch-btn"
+            :class="{ loading: aiGrouping }" :disabled="aiGrouping"
+            title="让大模型根据站点名和网址猜一个分组"
+            @click="runAiGroup"
+          >{{ aiGrouping ? '分组中…' : 'AI 猜分组' }}</button>
+        </div>
         <datalist id="group-options">
           <option v-for="g in groupOptions" :key="g" :value="g" />
         </datalist>
@@ -483,11 +528,6 @@ function onLibraryPick(site) {
     @cancel="onCropCancel"
   />
 
-  <SiteLibrary
-    :visible="showLibrary"
-    @close="showLibrary = false"
-    @pick="onLibraryPick"
-  />
 </template>
 
 <style scoped>
@@ -551,7 +591,9 @@ function onLibraryPick(site) {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.suggest-host { flex: none; font-size: 12px; color: var(--text-3); }
+/* 域名候选行：整条就是一个域名，别截断，让用户看清是 .com 还是 .cn */
+.suggest-domain { overflow: visible; text-overflow: clip; font-weight: 500; }
+.suggest-host { flex: none; max-width: 46%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text-3); }
 
 .suggest-sep {
   margin: 6px 9px 2px;

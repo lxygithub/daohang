@@ -20,7 +20,7 @@ import AccountModal from './components/AccountModal.vue'
 import AdminModal from './components/AdminModal.vue'
 import Toast from './components/Toast.vue'
 import {
-  authed, authChecked, userEmail, isAdmin, checkAuth, pullAndMerge, logout as syncLogout,
+  authed, authChecked, checkAuth, pullAndMerge, logout as syncLogout,
   bindPrefEvents,
 } from './composables/sync'
 const buildTime = __BUILD_TIME__
@@ -32,7 +32,6 @@ watch(authed, loggedIn => {
   if (loggedIn) return
   config.value = null
   editMode.value = false
-  userMenuOpen.value = false
   applyBackground()
   if (!loading.value) showAuthModal.value = true
 })
@@ -276,12 +275,23 @@ function handleKeydown(e) {
     showSearchModal.value = !showSearchModal.value
     return
   }
+  // Ctrl+K / Cmd+K：新增站点（不用再去右上角找）
+  // Ctrl+I / Cmd+I：打开设置
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === 'k' || e.key === 'K')) {
+    e.preventDefault()
+    if (config.value) openAddModal()
+    return
+  }
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.key === 'i' || e.key === 'I')) {
+    e.preventDefault()
+    if (config.value) showSettingsModal.value = true
+    return
+  }
   if (e.key === 'Escape') {
     if (showSearchModal.value) { showSearchModal.value = false; return }
+    if (showSettingsModal.value) { showSettingsModal.value = false; return }
     if (editMode.value) { editMode.value = false; return }
-    if (fabMenuOpen.value) { fabMenuOpen.value = false; return }
     if (addingEngine.value) { addingEngine.value = false; return }
-    if (userMenuOpen.value) { userMenuOpen.value = false; return }
     showEngineMenu.value = false
     return
   }
@@ -331,13 +341,6 @@ function handleDocClick(e) {
   if (showEngineMenu.value && !e.target.closest('.engine-anchor')) {
     showEngineMenu.value = false
   }
-  // Close the floating action cluster when clicking outside
-  if (fabMenuOpen.value && !e.target.closest('.fab-cluster')) {
-    fabMenuOpen.value = false
-  }
-  if (userMenuOpen.value && !e.target.closest('.fab-cluster')) {
-    userMenuOpen.value = false
-  }
   if (!editMode.value) return
   // Clicking a card or inside a modal keeps edit mode; blank space exits.
   if (
@@ -345,7 +348,7 @@ function handleDocClick(e) {
     e.target.closest('.modal-overlay') ||
     e.target.closest('.settings-drawer') ||
     e.target.closest('.drawer-catch') ||
-    e.target.closest('.fab-cluster')
+    e.target.closest('.gear-fab')
   ) return
   editMode.value = false
 }
@@ -388,7 +391,6 @@ const showSettingsModal = ref(false)
 const showAuthModal = ref(false)
 const showAccountModal = ref(false)
 const showAdminModal = ref(false)
-const userMenuOpen = ref(false)
 const syncingNow = ref(false)
 
 async function onAuthed(mail, mode) {
@@ -400,21 +402,19 @@ async function onAuthed(mail, mode) {
 }
 
 async function doLogout() {
-  userMenuOpen.value = false
   await syncLogout()
   showToast('已退出登录')
   clearConfigCache()   // 换账号/登出后不得再渲染上一账号的缓存配置
   config.value = null
+  showSettingsModal.value = false
   showAuthModal.value = true
 }
 
 function openAccount() {
-  userMenuOpen.value = false
   showAccountModal.value = true
 }
 
 function openAdmin() {
-  userMenuOpen.value = false
   showAdminModal.value = true
 }
 
@@ -434,23 +434,12 @@ async function syncNow() {
     showToast('已从云端同步')
   } finally {
     syncingNow.value = false
-    userMenuOpen.value = false
   }
 }
 
-// ---- Floating action cluster (pagoda menu) ----
-// The old topbar buttons collapse into one round button;
-// clicking it fans the actions out in a horizontal row.
-const fabMenuOpen = ref(false)
-
-function toggleFabMenu() {
-  fabMenuOpen.value = !fabMenuOpen.value
-}
-
-function runFabAction(fn) {
-  fabMenuOpen.value = false
-  fn()
-}
+// ---- 右上角只留一个淡化的齿轮 ----
+// 原先那一排浮标（视图切换 / 明暗 / 新增 / 内置导航 / 图标搜索 / 设置 / 账号）太长，
+// 已按用户要求全部搬进设置抽屉，右上角只保留「点一下直接开设置」的齿轮。
 
 // ---- View mode (grid / alpha) ----
 const viewMode = ref(loadView())
@@ -772,136 +761,19 @@ onUnmounted(() => {
     <img src="/windmill.svg" alt="" draggable="false">
   </button>
 
-  <!-- Pagoda menu — pinned top-right -->
-  <div class="fab-cluster">
-    <!-- Pagoda menu: actions fan out in a horizontal row -->
-    <div class="fab-anchor">
-      <transition name="fab-row">
-        <div v-if="fabMenuOpen" class="fab-row" @click.stop>
-          <button class="icon-btn fab-item" :title="viewMode === 'alpha' ? '切换到网格视图' : '切换到字母视图'" @click="runFabAction(toggleViewMode)">
-            <svg v-if="viewMode === 'alpha'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="3" width="7" height="7" rx="1.5"/>
-              <rect x="14" y="3" width="7" height="7" rx="1.5"/>
-              <rect x="3" y="14" width="7" height="7" rx="1.5"/>
-              <rect x="14" y="14" width="7" height="7" rx="1.5"/>
-            </svg>
-            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M4 7h9"/>
-              <path d="M4 12h7"/>
-              <path d="M4 17h5"/>
-              <path d="M17 6v12"/>
-              <path d="M14 15l3 3 3-3"/>
-            </svg>
-          </button>
-          <button class="icon-btn fab-item" :title="isLight ? '切换到暗色' : '切换到亮色'" @click="runFabAction(toggleTheme)">
-            <svg v-if="isLight" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-            </svg>
-            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="4"/>
-              <line x1="12" y1="2" x2="12" y2="4"/>
-              <line x1="12" y1="20" x2="12" y2="22"/>
-              <line x1="4.93" y1="4.93" x2="6.34" y2="6.34"/>
-              <line x1="17.66" y1="17.66" x2="19.07" y2="19.07"/>
-              <line x1="2" y1="12" x2="4" y2="12"/>
-              <line x1="20" y1="12" x2="22" y2="12"/>
-              <line x1="4.93" y1="19.07" x2="6.34" y2="17.66"/>
-              <line x1="17.66" y1="6.34" x2="19.07" y2="4.93"/>
-            </svg>
-          </button>
-          <button class="icon-btn fab-item" title="新增服务" @click="runFabAction(openAddModal)">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-              <line x1="12" y1="5" x2="12" y2="19"/>
-              <line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-          </button>
-          <button class="icon-btn fab-item" title="内置导航" @click="runFabAction(() => { showBuiltinModal = true })">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="3" y="3" width="7" height="7" rx="1.5"/>
-              <rect x="14" y="3" width="7" height="7" rx="1.5"/>
-              <rect x="3" y="14" width="7" height="7" rx="1.5"/>
-              <rect x="14" y="14" width="7" height="7" rx="1.5"/>
-            </svg>
-          </button>
-          <button class="icon-btn fab-item" title="搜索图标（Ctrl+F）" @click="runFabAction(() => { showSearchModal = true })">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-              <circle cx="11" cy="11" r="7"/>
-              <line x1="21" y1="21" x2="16.2" y2="16.2"/>
-            </svg>
-          </button>
-          <button class="icon-btn fab-item" title="设置" @click="runFabAction(() => { showSettingsModal = true })">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="12" cy="12" r="3"/>
-              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-            </svg>
-          </button>
-          <button v-if="authChecked && !authed" class="icon-btn fab-item" title="登录 / 注册" @click="runFabAction(() => { showAuthModal = true })">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-              <circle cx="12" cy="7" r="4"/>
-            </svg>
-          </button>
-          <button v-else-if="authed" class="icon-btn fab-item fab-user-dot" :title="userEmail" @click="runFabAction(() => { userMenuOpen = !userMenuOpen })">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
-              <circle cx="12" cy="7" r="4"/>
-            </svg>
-          </button>
-        </div>
-      </transition>
-      <button
-        class="fab fab-main"
-        :class="{ open: fabMenuOpen }"
-        :title="fabMenuOpen ? '收起菜单' : '展开菜单'"
-        @click.stop="toggleFabMenu"
-      >
-        <span class="h-line"></span>
-        <span class="h-line"></span>
-        <span class="h-line"></span>
-      </button>
-    </div>
-
-    <!-- Logged-in user menu -->
-    <transition name="menu-pop">
-      <div v-if="userMenuOpen" class="user-menu" @click.stop>
-        <div class="user-menu-head">
-          <span class="user-avatar">{{ userEmail.charAt(0).toUpperCase() }}</span>
-          <div class="user-meta">
-            <b>{{ userEmail }}</b>
-            <span>偏好自动同步已开启</span>
-          </div>
-        </div>
-        <button class="user-menu-item" :disabled="syncingNow" @click="syncNow">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="23 4 23 10 17 10"/>
-            <polyline points="1 20 1 14 7 14"/>
-            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-          </svg>
-          {{ syncingNow ? '同步中…' : '立即同步' }}
-        </button>
-        <button v-if="isAdmin" class="user-menu-item" @click="openAdmin">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-          </svg>
-          用户管理
-        </button>
-        <button class="user-menu-item" @click="openAccount">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
-          </svg>
-          账号管理
-        </button>
-        <button class="user-menu-item danger" @click="doLogout">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-            <polyline points="16 17 21 12 16 7"/>
-            <line x1="21" y1="12" x2="9" y2="12"/>
-          </svg>
-          退出登录
-        </button>
-      </div>
-    </transition>
-  </div>
+  <!-- 右上角只剩一个淡化的齿轮：点一下直接开设置（其余动作都在设置抽屉里） -->
+  <button
+    v-if="config"
+    class="gear-fab"
+    title="设置（Ctrl+I）"
+    aria-label="设置"
+    @click.stop="showSettingsModal = true"
+  >
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+    </svg>
+  </button>
 
   <EditModal
     v-if="config"
@@ -930,8 +802,20 @@ onUnmounted(() => {
     v-if="config"
     :visible="showSettingsModal"
     :background="config.background"
+    :light="isLight"
+    :syncing="syncingNow"
     @close="showSettingsModal = false"
     @saved="saveConfig"
+    @add-site="openAddModal"
+    @search-sites="showSearchModal = true"
+    @builtin-library="showBuiltinModal = true"
+    @toggle-theme="toggleTheme"
+    @toggle-view="toggleViewMode"
+    @login="showAuthModal = true"
+    @account="openAccount"
+    @admin="openAdmin"
+    @logout="doLogout"
+    @sync="syncNow"
   />
 
   <AuthModal

@@ -717,6 +717,9 @@ html[data-theme="light"] .card-icon.icon-text-mode {
   animation: modalIn 0.3s var(--ease) both;
 }
 
+/* 宽版弹窗：新增/编辑站点要用（搜索结果要能放下图标 + 名称 + 完整域名） */
+.modal.modal-lg { max-width: 660px; }
+
 @keyframes modalIn {
   from { opacity: 0; transform: translateY(18px) scale(0.98); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
@@ -1169,6 +1172,39 @@ html[data-theme="light"] .card-icon.icon-text-mode {
   right: 26px;
   top: 24px;
   z-index: 900;
+}
+
+/* 右上角只留一个「淡化」的齿轮：平时几乎融进背景，hover / 键盘聚焦才明显。
+   原来那一排浮标（视图 / 明暗 / 新增 / 内置导航 / 图标搜索 / 设置 / 账号）太长，
+   已全部搬进设置抽屉。 */
+.gear-fab {
+  position: fixed;
+  right: 20px;
+  top: 18px;
+  z-index: 900;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text);
+  opacity: 0.22;
+  cursor: pointer;
+  transition: opacity 0.25s var(--ease), transform 0.25s var(--ease), background 0.25s var(--ease);
+}
+.gear-fab svg { width: 19px; height: 19px; }
+.gear-fab:hover, .gear-fab:focus-visible {
+  opacity: 0.85;
+  background: var(--surface-hover);
+  transform: rotate(35deg);
+  outline: none;
+}
+/* 触摸设备没有 hover：基础不透明度抬一点，否则找不到 */
+@media (hover: none) {
+  .gear-fab { opacity: 0.42; }
 }
 
 .fab-windmill {
@@ -2391,4 +2427,51 @@ html[data-theme="light"] .user-menu-item.danger:hover { color: #c0392b; }
   border-radius: 50%;
   background: #43d17c;
   box-shadow: 0 0 6px rgba(67, 209, 124, 0.8);
+}
+
+/* ============================================================
+   设置抽屉新增块：快捷操作 / 账号 / AI 自动分组
+   ============================================================ */
+.quick-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 8px;
+}
+.quick-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.2s var(--ease), border-color 0.2s var(--ease), transform 0.2s var(--ease);
+}
+.quick-btn:hover { background: var(--surface-hover); border-color: var(--border-strong); transform: translateY(-1px); }
+.quick-btn svg { width: 16px; height: 16px; flex: none; opacity: 0.85; }
+.quick-btn span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.quick-btn i { flex: none; font-style: normal; font-size: 11px; color: var(--text-3); }
+
+.acct-card {
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+}
+.acct-mail { font-size: 13px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acct-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 9px; }
+.btn-text.danger { color: var(--danger); }
+
+.ai-form { display: flex; flex-direction: column; gap: 8px; }
+.ai-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.ai-row .btn-text.primary { flex: 1; min-width: 160px; }
+.ai-tip { font-size: 12px; line-height: 1.6; color: var(--text-3); }
+
+/* 小屏：齿轮往里收一点 */
+@media (max-width: 480px) {
+  .gear-fab { right: 12px; top: 12px; }
 }
