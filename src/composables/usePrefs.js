@@ -33,7 +33,12 @@ export function saveLayout(v) {
 }
 
 export function loadView() {
-  try { return localStorage.getItem(VIEW_KEY) === 'alpha' ? 'alpha' : 'grid' } catch { return 'grid' }
+  try {
+    const v = localStorage.getItem(VIEW_KEY)
+    // grid（默认平铺）｜ alpha（字母索引）｜ group（按分组）
+    // 按分组是**额外的**展示方式：只要不切到它，站点有没有分组都不影响默认排布。
+    return v === 'alpha' || v === 'group' ? v : 'grid'
+  } catch { return 'grid' }
 }
 
 export function saveView(v) {

@@ -111,6 +111,9 @@ const alphaSections = computed(() => {
 })
 
 const useAlpha = computed(() => viewMode.value === 'alpha' && !props.filter)
+// 按分组展示：只是视图模式之一。默认（grid）不看分组——有分组的站点照样平铺/翻页，
+// 想按分组看需要显式切到这个视图。
+const useGroup = computed(() => viewMode.value === 'group' && !props.filter)
 const sections = computed(() => (useAlpha.value ? alphaSections.value : groupSections.value))
 
 // Flat list currently displayed (search mode or ungrouped)
@@ -124,7 +127,7 @@ const showEmptyHint = computed(() =>
 
 // ---- Phone-style pager (home-screen like pages) ----
 const pagerOn = computed(() =>
-  layout.value === 'phone' && viewMode.value === 'grid' && !props.filter && !hasGroups.value
+  layout.value === 'phone' && viewMode.value === 'grid' && !props.filter
 )
 
 const page = ref(0)
@@ -413,7 +416,8 @@ function handleLayoutChanged(e) {
 }
 
 function handleViewChanged(e) {
-  viewMode.value = e.detail === 'alpha' ? 'alpha' : 'grid'
+  const v = e.detail
+  viewMode.value = v === 'alpha' || v === 'group' ? v : 'grid'
 }
 
 function handleGridChanged(e) {
@@ -556,8 +560,8 @@ onUnmounted(() => {
     </div>
   </div>
 
-  <!-- 搜索模式 / 未分组：平铺网格（字母视图除外，字母视图始终带字母分组头） -->
-  <div v-else-if="(props.filter || !hasGroups) && !useAlpha" class="card-grid" :class="{ 'layout-list': layout === 'list', 'layout-phone': layout === 'phone' }" :style="layout === 'phone' ? gridVars : null">
+  <!-- 默认视图 / 搜索模式：平铺网格（字母视图与按分组视图除外） -->
+  <div v-else-if="(props.filter || !useGroup) && !useAlpha" class="card-grid" :class="{ 'layout-list': layout === 'list', 'layout-phone': layout === 'phone' }" :style="layout === 'phone' ? gridVars : null">
     <NavCard
       v-for="svc in visibleFlat"
       :key="svc.id"

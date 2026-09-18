@@ -445,9 +445,17 @@ async function syncNow() {
 const viewMode = ref(loadView())
 
 function toggleViewMode() {
-  viewMode.value = viewMode.value === 'alpha' ? 'grid' : 'alpha'
+  // 默认平铺 → 字母索引 → 按分组 → 默认平铺
+  viewMode.value = viewMode.value === 'grid' ? 'alpha' : (viewMode.value === 'alpha' ? 'group' : 'grid')
   saveView(viewMode.value)
   emitView(viewMode.value)
+}
+
+function setViewMode(v) {
+  if (!['grid', 'alpha', 'group'].includes(v)) return
+  viewMode.value = v
+  saveView(v)
+  emitView(v)
 }
 
 // ---- Background & wallpaper ----
@@ -804,13 +812,14 @@ onUnmounted(() => {
     :background="config.background"
     :light="isLight"
     :syncing="syncingNow"
+    :view="viewMode"
     @close="showSettingsModal = false"
     @saved="saveConfig"
     @add-site="openAddModal"
     @search-sites="showSearchModal = true"
     @builtin-library="showBuiltinModal = true"
     @toggle-theme="toggleTheme"
-    @toggle-view="toggleViewMode"
+    @set-view="setViewMode"
     @login="showAuthModal = true"
     @account="openAccount"
     @admin="openAdmin"

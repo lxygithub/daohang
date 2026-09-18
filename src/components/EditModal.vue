@@ -37,6 +37,8 @@ const nameTouched = ref(false)
 // 自动获取失败（没拿到图标）时，才把「重试获取」按钮亮出来——正常流程是全自动的
 const fetchFailed = ref(false)
 const aiGrouping = ref(false)
+const aiGroupHint = ref('')
+const groupTouched = ref(false)
 let autoFetchTimer = null
 let skipAutoUrl = ''
 let lastNameAuto = ''
@@ -148,6 +150,9 @@ watch(() => props.visible, (val) => {
   lastNameAuto = ''
   clearTimeout(autoFetchTimer)
   fetchFailed.value = false
+  aiGroupHint.value = ''
+  aiGrouping.value = false
+  groupTouched.value = false
   closeSuggest()
   if (props.editIndex >= 0) {
     const svc = props.services[props.editIndex]
@@ -270,6 +275,8 @@ async function autoFetch(silent = false) {
       else if (data.error) showToast(`未能获取（${data.error}），可手动填写`)
       else showToast('未能获取，可手动填写')
     }
+    // 配了大模型就顺手让它认一下分组（结果填进输入框，用户可改）
+    if (!stale()) autoAssignGroup()
   } catch (e) {
     fetchFailed.value = true
     if (!silent) showToast('获取失败：' + (e?.message || '请手动填写'))
@@ -387,25 +394,34 @@ function applyPick(site) {
   if (!group.value.trim() && site.suggestedGroup) group.value = site.suggestedGroup
   fetchFailed.value = false
   showToast('已填入，可修改后保存')
+  autoAssignGroup()
 }
 
 // ---- AI 自动分组（单站点）----
-async function runAiGroup() {
-  if (aiGrouping.value) return
-  const siteName = name.value.trim() || url.value.trim()
-  if (!siteName) { showToast('先填写链接或名称'); return }
+// 配了大模型就自动跑：抓完标题/图标后，把模型给的分组名填进输入框（用户可改）。
+// 用户手动改过分组（groupTouched）或已经有值时不再覆盖。
+async function autoAssignGroup() {
+  if (aiGrouping.value || !aiConfigured()) return
+  if (groupTouched.value || group.value.trim()) return
+  const siteName = name.value.trim()
+  if (!siteName) return
   aiGrouping.value = true
+  aiGroupHint.value = ''
   try {
-    const groups = groupOptions.value
     const picked = await aiGroupSites(
       [{ id: 'this', name: siteName, url: url.value.trim() }],
-      groups,
+      groupOptions.value,
     )
     const g = picked.this
-    if (g) { group.value = g; showToast(`AI 建议分组：${g}`) }
-    else showToast('AI 没能给出分组建议')
+    // 用户可能在等待期间自己填了分组 → 别覆盖
+    if (g && !groupTouched.value && !group.value.trim()) {
+      group.value = g
+      aiGroupHint.value = `AI 分组：${g}（可改）`
+    } else if (!g) {
+      aiGroupHint.value = 'AI 没能给出分组，可手填'
+    }
   } catch (e) {
-    showToast('AI 分组失败：' + (e?.message || ''))
+    aiGroupHint.value = 'AI 分组失败，可手填'
   } finally {
     aiGrouping.value = false
   }
@@ -493,15 +509,10 @@ async function runAiGroup() {
             v-model="group"
             list="group-options"
             placeholder="如：开发工具 / 媒体 / 网络"
+            @input="groupTouched = true"
           >
-          <button
-            v-if="aiConfigured()"
-            type="button" class="btn-text fetch-btn"
-            :class="{ loading: aiGrouping }" :disabled="aiGrouping"
-            title="让大模型根据站点名和网址猜一个分组"
-            @click="runAiGroup"
-          >{{ aiGrouping ? '分组中…' : 'AI 猜分组' }}</button>
         </div>
+        <p v-if="aiGrouping || aiGroupHint" class="group-hint">{{ aiGrouping ? 'AI 正在识别分组…' : aiGroupHint }}</p>
         <datalist id="group-options">
           <option v-for="g in groupOptions" :key="g" :value="g" />
         </datalist>
@@ -598,6 +609,13 @@ async function runAiGroup() {
 .suggest-sep {
   margin: 6px 9px 2px;
   font-size: 11.5px;
+  color: var(--text-3);
+}
+
+/* 分组输入框下方的 AI 提示 */
+.group-hint {
+  margin-top: 6px;
+  font-size: 12px;
   color: var(--text-3);
 }
 </style>

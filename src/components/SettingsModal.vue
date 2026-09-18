@@ -17,12 +17,13 @@ const props = defineProps({
   // 明暗主题 / 同步状态由 App 管，设置里只做展示与转发
   light: { type: Boolean, default: false },
   syncing: { type: Boolean, default: false },
+  view: { type: String, default: 'grid' },
 })
 
 // 原先右上角那一排浮标的动作，现在全部由设置抽屉转发出去
 const emit = defineEmits([
   'close', 'saved',
-  'add-site', 'search-sites', 'builtin-library', 'toggle-theme', 'toggle-view',
+  'add-site', 'search-sites', 'builtin-library', 'toggle-theme', 'set-view',
   'login', 'account', 'admin', 'logout', 'sync',
 ])
 const ensureVerified = inject('ensureVerified')
@@ -32,6 +33,12 @@ const saveConfig = inject('saveConfig')
 const setWallpaper = inject('setWallpaper', null)
 
 const SORT_KEY = 'nav_sort_usage'
+// 视图模式：默认平铺 / 字母索引 / 按分组（分组只是额外的一种展示方式）
+const VIEWS = [
+  { id: 'grid', name: '默认', hint: '平铺网格，按你的手动排序或使用频率展示；有分组也不影响' },
+  { id: 'alpha', name: '字母索引', hint: '按首字母/拼音分成 A–Z 段展示' },
+  { id: 'group', name: '按分组', hint: '按站点分组分段展示，未填写分组的归到「未分组」' },
+]
 const sortUsage = ref(localStorage.getItem(SORT_KEY) === '1')
 const layout = ref(loadLayout())
 const grid = ref(loadGrid())
@@ -624,47 +631,6 @@ function pickImport() {
             </svg>
             <span>{{ light ? '切到暗色' : '切到亮色' }}</span><i>当前{{ light ? '亮色' : '暗色' }}</i>
           </button>
-          <button class="quick-btn" @click="emit('toggle-view')">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
-            <span>切换视图</span><i>网格 / 字母</i>
-          </button>
-        </div>
-      </div>
-
-      <!-- 账号：原「用户菜单」的四个动作 -->
-      <div class="form-group">
-        <label>账号</label>
-        <div class="acct-card">
-          <div class="acct-mail">{{ authed ? userEmail : '未登录（数据只存在本机）' }}</div>
-          <div class="acct-actions">
-            <template v-if="authed">
-              <button class="btn-text fetch-btn" :disabled="syncing" @click="emit('sync')">{{ syncing ? '同步中…' : '立即同步' }}</button>
-              <button class="btn-text fetch-btn" @click="emit('account')">账号管理</button>
-              <button v-if="isAdmin" class="btn-text fetch-btn" @click="emit('admin')">用户管理</button>
-              <button class="btn-text fetch-btn danger" @click="emit('logout')">退出登录</button>
-            </template>
-            <button v-else class="btn-text primary" @click="emit('login')">登录 / 注册</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- 大模型 API：配好之后「AI 自动分组」才启用 -->
-      <div class="form-group">
-        <label>AI 自动分组 <span class="label-hint">（OpenAI 兼容接口，配好才启用）</span></label>
-        <div class="ai-form">
-          <input class="form-input" v-model="aiForm.apiBase" placeholder="接口地址，如 https://api.deepseek.com/v1" autocomplete="off">
-          <input class="form-input" v-model="aiForm.model" placeholder="模型名，如 deepseek-chat" autocomplete="off">
-          <input class="form-input" type="password" v-model="aiForm.apiKey" placeholder="API Key（只存本机浏览器）" autocomplete="new-password">
-          <div class="ai-row">
-            <button class="btn-text fetch-btn" @click="saveAi">保存</button>
-            <button class="btn-text primary" :disabled="!aiReady || aiBusy" @click="runAiGroupAll">
-              {{ aiBusy ? (aiProgress || '分组中…') : '用 AI 给全部站点分组' }}
-            </button>
-          </div>
-          <p class="ai-tip">
-            Key 只保存在本机 localStorage，不入库、不参与偏好同步；调用时经自家 Worker 转发
-            （国内浏览器直连大模型接口常超时/CORS 被拦）。分组会覆盖现有分组名。
-          </p>
         </div>
       </div>
 
@@ -750,6 +716,22 @@ function pickImport() {
           </label>
           <p class="settings-hint">10% = 48px，100% = 500px；图标超出列宽时自动适配，可减小列数放大图标</p>
         </div>
+      </div>
+
+      <div class="form-group">
+        <label>视图 <span class="label-hint">（按分组只是多一种展示方式，默认排布不受分组影响）</span></label>
+        <div class="seg-row">
+          <button
+            v-for="v in VIEWS"
+            :key="v.id"
+            class="seg-btn"
+            :class="{ active: view === v.id }"
+            type="button"
+            :title="v.hint"
+            @click="emit('set-view', v.id)"
+          >{{ v.name }}</button>
+        </div>
+        <p class="settings-hint">{{ VIEWS.find(v => v.id === view)?.hint || '' }}</p>
       </div>
 
       <div class="form-group">
@@ -993,6 +975,44 @@ function pickImport() {
           <button class="btn-text ghost" @click="pickImport">导入配置</button>
         </div>
         <p class="settings-hint">导出包含全部服务与背景设置，导入将覆盖当前数据</p>
+      </div>
+
+      <!-- 账号：原「用户菜单」的四个动作 -->
+      <div class="form-group">
+        <label>账号</label>
+        <div class="acct-card">
+          <div class="acct-mail">{{ authed ? userEmail : '未登录（数据只存在本机）' }}</div>
+          <div class="acct-actions">
+            <template v-if="authed">
+              <button class="btn-text fetch-btn" :disabled="syncing" @click="emit('sync')">{{ syncing ? '同步中…' : '立即同步' }}</button>
+              <button class="btn-text fetch-btn" @click="emit('account')">账号管理</button>
+              <button v-if="isAdmin" class="btn-text fetch-btn" @click="emit('admin')">用户管理</button>
+              <button class="btn-text fetch-btn danger" @click="emit('logout')">退出登录</button>
+            </template>
+            <button v-else class="btn-text primary" @click="emit('login')">登录 / 注册</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 大模型 API：配好之后「AI 自动分组」才启用 -->
+      <div class="form-group">
+        <label>AI 自动分组 <span class="label-hint">（OpenAI 兼容接口，配好才启用）</span></label>
+        <div class="ai-form">
+          <input class="form-input" v-model="aiForm.apiBase" placeholder="接口地址，如 https://api.deepseek.com/v1" autocomplete="off">
+          <input class="form-input" v-model="aiForm.model" placeholder="模型名，如 deepseek-chat" autocomplete="off">
+          <input class="form-input" type="password" v-model="aiForm.apiKey" placeholder="API Key（只存本机浏览器）" autocomplete="new-password">
+          <div class="ai-row">
+            <button class="btn-text fetch-btn" @click="saveAi">保存</button>
+            <button class="btn-text primary" :disabled="!aiReady || aiBusy" @click="runAiGroupAll">
+              {{ aiBusy ? (aiProgress || '分组中…') : '用 AI 给全部站点分组' }}
+            </button>
+          </div>
+          <p class="ai-tip">
+            Key 只保存在本机 localStorage，不入库、不参与偏好同步；调用时经自家 Worker 转发
+            （国内浏览器直连大模型接口常超时/CORS 被拦）。分组名只是给「视图 → 按分组」用，
+            **不影响默认平铺排布**；新增站点时会自动识别并把分组名填进输入框，可随时改。
+          </p>
+        </div>
       </div>
 
       <div class="drawer-footer">
