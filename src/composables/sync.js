@@ -35,6 +35,9 @@ const KEYS = {
   theme:   { ls: 'nav_theme',          event: 'theme-changed' },
   engines: { ls: 'nav_custom_engines', event: 'custom-engines-changed' },
   engine:  { ls: 'nav_engine',         event: 'engine-changed' },
+  // 大模型设置（接口地址/模型/API Key）：跟账号同步，换设备不用重填。
+  // ⚠️ 值会存进服务端 user_data（自己的库），任何能读到该账号配置的人都能看到 Key。
+  ai:      { ls: 'nav_ai_settings',    event: 'ai-changed' },
 }
 
 // ---- ledger ----
@@ -145,7 +148,7 @@ function applyServer(key, raw) {
       try { applyFont(JSON.parse(raw)) } catch { applyFont(undefined) }
     }
     window.dispatchEvent(new CustomEvent(KEYS[key].event, {
-      detail: key === 'search' || key === 'grid' ? JSON.parse(raw) : raw,
+      detail: key === 'search' || key === 'grid' || key === 'ai' ? JSON.parse(raw) : raw,
     }))
   } catch {} finally {
     suppressing.delete(key)

@@ -56,6 +56,8 @@ const sizePct = computed(() => pxToPct(grid.value.size))
 
 // ---- AI 自动分组（Key 只在本机 localStorage；没配置就不启用）----
 const aiForm = ref({ ...DEFAULT_AI, ...aiSettings.value })
+// 账号同步回来的值（或另一台设备改的）进来时，刷新表单
+watch(aiSettings, (v) => { aiForm.value = { ...DEFAULT_AI, ...v } })
 const aiBusy = ref(false)
 const aiProgress = ref('')
 const aiReady = computed(() =>
@@ -1000,7 +1002,7 @@ function pickImport() {
         <div class="ai-form">
           <input class="form-input" v-model="aiForm.apiBase" placeholder="接口地址，如 https://api.deepseek.com/v1" autocomplete="off">
           <input class="form-input" v-model="aiForm.model" placeholder="模型名，如 deepseek-chat" autocomplete="off">
-          <input class="form-input" type="password" v-model="aiForm.apiKey" placeholder="API Key（只存本机浏览器）" autocomplete="new-password">
+          <input class="form-input" type="password" v-model="aiForm.apiKey" placeholder="API Key（跟随账号同步）" autocomplete="new-password">
           <div class="ai-row">
             <button class="btn-text fetch-btn" @click="saveAi">保存</button>
             <button class="btn-text primary" :disabled="!aiReady || aiBusy" @click="runAiGroupAll">
@@ -1008,9 +1010,9 @@ function pickImport() {
             </button>
           </div>
           <p class="ai-tip">
-            Key 只保存在本机 localStorage，不入库、不参与偏好同步；调用时经自家 Worker 转发
-            （国内浏览器直连大模型接口常超时/CORS 被拦）。分组名只是给「视图 → 按分组」用，
-            **不影响默认平铺排布**；新增站点时会自动识别并把分组名填进输入框，可随时改。
+            设置<b>跟随账号同步</b>（存在你自己的库里，key = <code>ai</code>），换设备登录不用重填；
+            调用时经自家 Worker 转发（国内浏览器直连大模型接口常超时/CORS 被拦）。
+            分组名只是给「视图 → 按分组」用，不影响默认平铺排布；新增站点时会自动识别并把分组名填进输入框，可随时改。
           </p>
         </div>
       </div>

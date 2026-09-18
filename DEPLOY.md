@@ -376,8 +376,11 @@ routes = [
 
 取舍说明：
 
-- **API Key 只存在浏览器 localStorage**，不入库、不参与偏好同步；每次调用随请求体发给自家 Worker，
-  由 Worker 转发给大模型（`functions/api/ai/group.js`）。
+- **2026-09-18 起：AI 设置（接口地址 / 模型 / API Key）跟账号同步**——存进你自己的库
+  （`user_data.key = 'ai'`），走 `/api/user/prefs` 的 LWW 合并，换设备登录不用重填。
+  调用时仍随请求体发给自家 Worker，由 Worker 转发给大模型（`functions/api/ai/group.js`）。
+  ⚠️ 代价：**Key 会落在数据库里**，任何能读到该账号配置的人（或拿到该账号会话的人）都能看到它；
+  之前"只存浏览器"的设计就是为规避这一点，这是按需求做的权衡。
 - 之所以不浏览器直连：国内直连 `api.deepseek.com` / `api.openai.com` 常超时或 CORS 被拦，
   Worker 在境外边缘，通道稳定（2026-09-18 实测：Worker 转发能正常收到大模型的 401 鉴权错误，
   说明链路通）。

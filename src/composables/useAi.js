@@ -4,6 +4,10 @@
 // 每次调用时随请求体发给自家 Worker，由 Worker 转发给大模型（`/api/ai/group`）。
 // 走服务端转发而不是浏览器直连的原因：国内浏览器直连 api.openai.com / api.deepseek.com
 // 常常超时或 CORS 被拦，而 Worker 在境外边缘，通道稳定。
+//
+// 2026-09-18 变更：按用户要求改成**跟账号同步**（存进自己的 daohang.user_data，
+// key = 'ai'，走 /api/user/prefs 的 LWW 合并）。换设备登录不用重填 Key。
+// ⚠️ 代价是 Key 会落在你自己的数据库里，能读到该账号配置的人就能看到它。
 import { ref } from 'vue'
 
 const KEY = 'nav_ai_settings'
@@ -25,9 +29,24 @@ function load() {
 
 export const aiSettings = ref(load())
 
+function normalize(o) {
+  return { ...DEFAULT_AI, ...(o && typeof o === 'object' ? o : {}) }
+}
+
+/** 写 localStorage + 广播事件；同步层（bindPrefEvents）监听到就会推到账号上 */
 export function saveAiSettings(next) {
-  aiSettings.value = { ...DEFAULT_AI, ...next }
-  try { localStorage.setItem(KEY, JSON.stringify(aiSettings.value)) } catch {}
+  const merged = normalize(next)
+  aiSettings.value = merged
+  try { localStorage.setItem(KEY, JSON.stringify(merged)) } catch {}
+  window.dispatchEvent(new CustomEvent('ai-changed', { detail: merged }))
+}
+
+// 服务端把值写回 localStorage 后也会广播同一个事件（见 sync.js 的 applyServer）
+if (typeof window !== 'undefined') {
+  window.addEventListener('ai-changed', (e) => {
+    const d = e?.detail
+    aiSettings.value = d && typeof d === 'object' ? normalize(d) : load()
+  })
 }
 
 /** 配置齐了（有 key + 模型）才算启用；没配置时所有 AI 入口都不显示 */
