@@ -478,6 +478,28 @@ function setViewMode(v) {
 }
 
 // ---- Background & wallpaper ----
+// 把"当前生效的背景"记到一个小键里：index.html 里有一段内联脚本会先读它并垫上，
+// 这样首帧就是上次的背景，不会先黑一下再出背景（配置要等网关往返 1~2.5s）。
+const BG_CACHE_KEY = 'nav_bg_cache'
+
+function saveBgCache(value) {
+  try {
+    const cur = JSON.parse(localStorage.getItem(BG_CACHE_KEY) || 'null') || {}
+    const next = { ...cur, ...value }
+    localStorage.setItem(BG_CACHE_KEY, JSON.stringify(next))
+  } catch {}
+}
+
+function clearBgCache() {
+  try { localStorage.removeItem(BG_CACHE_KEY) } catch {}
+}
+
+// 首帧垫底用的 <style id="__bg_pre">（见 index.html）：真正应用背景后把它摘掉，
+// 免得它一直压着后面的样式（它是无 !important 的普通规则，只用于"配置还没到"的空窗）。
+function dropPreBg() {
+  try { document.getElementById('__bg_pre')?.remove() } catch {}
+}
+
 function applyBackground() {
   const bg = config.value?.background
   const wp = config.value?.wallpaper
@@ -486,13 +508,17 @@ function applyBackground() {
   const layer = document.querySelector('.wp-layer')
 
   if (wp && wp.type !== 'none' && wp.value) {
+    dropPreBg()
     if (layer) {
       layer.style.backgroundImage = `url("${wp.value}")`
       layer.style.setProperty('--wp-blur', blur + 'px')
       layer.classList.add('active')
     }
     decor?.classList.add('dimmed')
-    document.body.style.background = '#0d1017'
+    // 垫底也用同一张图（而不是纯黑）：换壁纸时是两图交叉淡入，开机时也不会先黑一下
+    const wpCss = `url("${wp.value}") center / cover no-repeat fixed`
+    document.body.style.background = wpCss
+    saveBgCache({ wp: wp.value, blur, bg: wpCss })
     return
   }
   layer?.classList.remove('active')
@@ -500,6 +526,13 @@ function applyBackground() {
   decor?.classList.remove('dimmed')
   const isDefault = !bg || !bg.value || bg.value === '#0d1017'
   document.body.style.background = isDefault ? '' : bg.value
+  // 配置到手了，首帧垫底的那个 <style> 使命完成；config 还是 null 时不能摘，
+  // 否则开机那次调用会把刚垫上的背景又撤掉（这就是首帧垫底失效的原因）
+  if (config.value) dropPreBg()
+  // 只有"配置确实到手、而且背景就是默认"时才清缓存。config 还没拉回来时不清——
+  // 冷启动那次 applyBackground() 就是 config 还是 null 的时候调的，清了首帧就没得垫了。
+  if (!isDefault) saveBgCache({ bg: bg.value, wp: '', blur: 0 })
+  else if (config.value) clearBgCache()
 }
 
 // ---- Windmill FAB: random Bing wallpaper ----
@@ -580,6 +613,9 @@ onMounted(async () => {
   fetchQuote()
   // 先用本地缓存出页面：三个网关往返（鉴权→偏好→配置，每次 ≈2.5s）不再阻塞首屏
   primeConfigFromCache()
+  // 缓存里有配置就立刻上背景：否则要等配置从网关回来（1~2.5s）才 applyBackground，
+  // 那段时间页面是初始深色，看起来就是"首页背景黑一下才出来"
+  applyBackground()
   if (await checkAuth()) {
     // 偏好与配置互不依赖，并行拉取，少等一个往返
     await Promise.all([pullAndMerge(), loadConfig()])

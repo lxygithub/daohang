@@ -25,6 +25,24 @@ a { color: inherit; text-decoration: none; }
 </style>
 </head>
 <body>
+  <script>
+    // 首帧就垫上上次的背景：配置要经网关往返 1~2.5s 才回来，不然这段时间页面是纯深色，
+    // 每次打开都像"背景黑一下才出来"。这里读 App.vue 写入的 nav_bg_cache（几十字节）。
+    // 用注入 <style> 而不是直接改 body.style：解析到这一行时 document.body 可能还没就绪，
+    // 而 <style> 只依赖已经解析完的 head，并且它排在关键 CSS 之后，能稳压初始的深色底。
+    (function () {
+      try {
+        var c = JSON.parse(localStorage.getItem('nav_bg_cache') || 'null')
+        if (!c) return
+        var css = c.wp ? 'url("' + c.wp + '") center / cover no-repeat fixed' : (c.bg || '')
+        if (!css) return
+        var st = document.createElement('style')
+        st.id = '__bg_pre'
+        st.textContent = 'html, body { background: ' + css + '; }'
+        document.head.appendChild(st)
+      } catch (e) {}
+    })()
+  </script>
   <div id="app"></div>
   <script type="module" src="/src/main.js"></script>
 </body>

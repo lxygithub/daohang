@@ -293,6 +293,21 @@ routes = [
 `authChecked`（`checkAuth()` 有结果才置 true），所有「未登录」UI 都同时判断它；有本地缓存时直接出网格，
 不用等鉴权。**新加未登录相关 UI 时记得带上 `authChecked`，别只判 `authed`。**
 
+**打开首页背景先黑一下，过一会才出背景？**
+
+背景（`config.background` / `config.wallpaper`）要等配置从网关回来才知道，而那是一趟
+1~2.5s 的往返，所以"先黑一下"的根因是**首帧没有背景可画**。2026-09-18 起三层处理：
+
+1. `applyBackground()` 里把当前生效的背景写进小键 `nav_bg_cache`（几十字节）；
+2. `index.html` 里一段内联脚本在**首帧之前**读它并注入 `<style id="__bg_pre">`，
+   主题配置回来后再摘掉（`dropPreBg()`）——注意 config 还没到（`config.value == null`）时
+   **不能**摘、也**不能**清缓存，否则冷启动那次 `applyBackground()` 会把刚垫上的背景抹掉；
+3. `applyBackground()` 在 `primeConfigFromCache()` 之后立刻调一次，有配置缓存时连内联垫底都不用等。
+
+壁纸是大图，所以 `sw.js` 对 **`destination === 'image'` 的请求改成 cache-first**
+（独立缓存 `daohang-img-v1`，含跨域的自家图床），二次访问直接命中，不再重新下载。
+注意：图片是 cache-first，**同一个 URL 换了内容不会自动更新**——图床外链带时间戳，天然规避。
+
 **新增站点在哪？有快捷键吗？**
 右上角原来那一排浮标（视图 / 明暗 / 新增 / 内置导航 / 图标搜索 / 设置 / 账号）太长，
 2026-09-18 已全部搬进**设置抽屉**（点右上角那个淡齿轮打开，鼠标移上去才会变亮），
