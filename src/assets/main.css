@@ -674,22 +674,29 @@ html[data-theme="light"] .card-icon.icon-text-mode {
 
 /* ============================================================
    离线只读态（后端/网关不可达，用本地缓存渲染）
+   整颗胶囊就是重试按钮，界面上只有「● 离线」两个元素，细节在 title 里
    ============================================================ */
-.offline-banner {
+.offline-pill {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   width: fit-content;
   max-width: 100%;
   margin: 0 auto 4px;
-  padding: 7px 8px 7px 14px;
+  padding: 4px 11px 4px 9px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--surface);
-  color: var(--text-2);
-  font-size: 0.84rem;
+  color: var(--text-3);
+  font-family: inherit;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  cursor: pointer;
   backdrop-filter: blur(10px);
+  transition: color 0.2s var(--ease), border-color 0.2s var(--ease);
 }
+.offline-pill:hover { color: var(--text-2); border-color: var(--border-strong); }
+.offline-pill:disabled { cursor: default; }
 /* 琥珀色：这不是报错，是「降级中」 */
 .offline-dot {
   flex: none;
@@ -699,11 +706,11 @@ html[data-theme="light"] .card-icon.icon-text-mode {
   background: #f0b354;
   box-shadow: 0 0 0 4px rgba(240, 179, 84, 0.14);
 }
-.offline-banner .offline-retry {
-  padding: 4px 10px;
-  font-size: 0.82rem;
+.offline-pill.retrying .offline-dot { animation: offline-pulse 1.1s ease-in-out infinite; }
+@keyframes offline-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
 }
-.offline-banner .offline-retry:disabled { opacity: 0.6; pointer-events: none; }
 
 /* ============================================================
    Empty search hint

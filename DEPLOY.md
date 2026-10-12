@@ -293,7 +293,7 @@ routes = [
 `authChecked`（`checkAuth()` 有结果才置 true），所有「未登录」UI 都同时判断它；有本地缓存时直接出网格，
 不用等鉴权。**新加未登录相关 UI 时记得带上 `authChecked`，别只判 `authed`。**
 
-**登录报 `Gateway BAD_RESPONSE; HTTP 530` / 页面出现「正在使用本地缓存（只读）」？**
+**登录报 `Gateway BAD_RESPONSE; HTTP 530` / 页面出现一颗琥珀色的「离线」标记？**
 530 不是本仓库的问题：WAF 放行后 Cloudflare 到不了源站（隧道连接器离线 / 源站不可达，即 1016、1033 那一类），
 也就是**家里那台跑 PostgreSQL + sql-gateway + cloudflared 的机器停机了**。判别口诀：
 
@@ -305,7 +305,8 @@ routes = [
 | HTTP 200 但 `Gateway DATABASE_QUERY_FAILED` | 链路通，网关侧 target / 库 / 表的问题 |
 
 2026-10-12 起前端对此有**离线只读降级**（`composables/sync.js` 的 `backendDown` + `App.vue` 的 `offlineMode`）：
-后端不可达且本地有缓存时，直接用缓存渲染网格、顶部挂一条琥珀色只读横幅，写操作一律拦下并提示，
+后端不可达且本地有缓存时，直接用缓存渲染网格、顶部挂一颗琥珀色「离线」标记（整颗可点 = 重试，
+详细说明在它的 title 里），写操作一律拦下并提示，
 并每 60s 静默重试一次（也可点「重试连接」）；服务器一开机自动恢复。
 只有两种情况才会清缓存回登录框：**服务端明确回 401**（会话真失效），或用户主动登出。
 **新增「未登录」相关 UI 时，要同时判断 `authChecked` 和 `offlineMode`，别把后端不可达误当成未登录。**

@@ -858,15 +858,22 @@ onUnmounted(() => {
       </form>
     </section>
 
-    <!-- 离线只读：后端不可达（网关 530 / 数据库停机）时，用上次缓存的配置渲染，
-         并明说这是本地数据、写操作不可用；服务器恢复后自动撤下。 -->
-    <div v-if="offlineMode && config" class="offline-banner">
+    <!-- 离线只读：后端不可达（网关 530 / 数据库停机）时，用上次缓存的配置渲染。
+         界面上只留一个琥珀点 +「离线」，细节放 title；整颗胶囊本身就是重试按钮
+         （服务器恢复后也会自动撤下，一般不用点）。 -->
+    <button
+      v-if="offlineMode && config"
+      type="button"
+      class="offline-pill"
+      :class="{ retrying }"
+      :disabled="retrying"
+      :aria-label="retrying ? '正在检测服务器' : '服务暂时不可用，正在使用本地缓存（只读），点击重试'"
+      :title="retrying ? '正在检测服务器…' : '服务暂时不可用，正在使用本地缓存（只读）——点击重试'"
+      @click="retryBackend()"
+    >
       <span class="offline-dot"></span>
-      <span>服务暂时不可用，正在使用本地缓存（只读）</span>
-      <button type="button" class="btn-text ghost offline-retry" :disabled="retrying" @click="retryBackend()">
-        {{ retrying ? '检测中…' : '重试连接' }}
-      </button>
-    </div>
+      <span>离线</span>
+    </button>
 
     <!-- authed 初始为 false 只表示「还没问过服务端」，不能当成未登录来渲染。
          否则登录状态下刷新会先闪一下「请登录…」再跳回来（鉴权那趟网关往返 1～2s）。
