@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { useToast } from './useToast'
-import { authed, noteConfigSynced } from './sync'
+import { authed, backendDown, noteConfigSynced } from './sync'
 
 const config = ref(null)
 const loading = ref(true)
@@ -43,27 +43,45 @@ export function useConfig() {
     // 配置仅属于账号。会话失效时绝不展示或回退到访客配置。
     loading.value = config.value === null
     if (!authed.value) {
-      config.value = null
+      // 「未登录」有两种，处理必须分开：
+      //   * 服务端明确回 401 → 确实没登录，清掉展示（缓存由 401 分支负责清）；
+      //   * 后端不可达（网关 530 / 数据库停机）→ 登录态未知，保留已渲染的缓存，
+      //     由 App.vue 切到离线只读态。以前这里无条件 config.value = null，
+      //     结果服务器一停，缓存明明在也被抹掉、只剩登录框。
+      if (!backendDown.value) config.value = null
+      loading.value = false
+      return false
+    }
+    let res
+    try {
+      res = await fetch('/api/config')
+    } catch {
+      // 网络层失败：保留缓存（离线只读），不当作未登录
+      backendDown.value = true
       loading.value = false
       return false
     }
     try {
-      const res = await fetch('/api/config')
       if (res.status === 401) {
         authed.value = false
         config.value = null
         clearConfigCache()
         return false
       }
-      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      if (!res.ok) {
+        if (res.status >= 500) backendDown.value = true   // 网关/数据库不可达
+        throw new Error(`HTTP ${res.status}`)
+      }
       config.value = JSON.parse(await res.text())
       const updatedAt = Number(res.headers.get('X-Config-Updated-At')) || 0
       noteConfigSynced(updatedAt)
       writeCache(config.value, updatedAt)
+      backendDown.value = false
       return true
     } catch (e) {
       console.error('[daohang] Failed to load config:', e)
-      config.value = null
+      // 只有「服务端明确拒绝」才清空；下游不可用时留着缓存给只读态渲染
+      if (!backendDown.value) config.value = null
       return false
     } finally {
       loading.value = false
@@ -73,7 +91,7 @@ export function useConfig() {
   async function saveConfig() {
     if (!config.value) return false
     if (!authed.value) {
-      useToast().showToast('登录已过期，请重新登录')
+      useToast().showToast(backendDown.value ? '数据库服务暂时不可用，暂不能保存（当前为本地缓存只读）' : '登录已过期，请重新登录')
       return false
     }
     try {
@@ -95,12 +113,16 @@ export function useConfig() {
         authed.value = false
         clearConfigCache()
         useToast().showToast('登录已过期，请重新登录')
+      } else if (res.status >= 500) {
+        backendDown.value = true
+        useToast().showToast('数据库服务暂时不可用，保存失败')
       } else {
         const d = await res.json().catch(() => ({}))
         useToast().showToast('保存失败：' + (d.error || `HTTP ${res.status}`))
       }
     } catch (e) {
       console.error('Failed to save config:', e)
+      backendDown.value = true
       useToast().showToast('保存失败，请检查网络')
     }
     return false

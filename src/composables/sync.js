@@ -18,6 +18,14 @@ export const authed = ref(false)
 // 未登录提示再跳回来（网关在后面，这一次往返能到 1～2s）。所有「未登录」的 UI 都要
 // 同时判断 authChecked，见 App.vue。
 export const authChecked = ref(false)
+// 后端是否不可达。它和「未登录」是两件事，必须分开：
+//   * 200 / 401 → 服务端有明确答复，backendDown=false；
+//   * fetch 抛错，或 5xx（家里数据库服务器停机时 /api/auth/me 会回 500，
+//     错误串是「Gateway BAD_RESPONSE; HTTP 530」）→ backendDown=true，
+//     这时「未登录」只是个默认值，并不代表用户真的没登录。
+// 用途：App.vue 据此进入离线只读态（渲染本地缓存），而不是 clearConfigCache()
+// 把人挡在登录框外面——2026-10-12 那次数据库服务器停机就是这么来的。
+export const backendDown = ref(false)
 export const userEmail = ref('')
 export const isAdmin = ref(false)
 
@@ -165,15 +173,40 @@ export async function checkAuth() {
       authed.value = !!d.ok
       userEmail.value = d.email || ''
       isAdmin.value = !!d.isAdmin
+      backendDown.value = false
+    } else if (res.status >= 500) {
+      // 服务端在跑、下游（网关 → 数据库）挂掉：登录态未知，绝不能当成未登录
+      backendDown.value = true
+      authed.value = false
+      userEmail.value = ''
+      isAdmin.value = false
     } else {
+      backendDown.value = false
       authed.value = false
       userEmail.value = ''
       isAdmin.value = false
     }
-  } catch { authed.value = false } finally {
+  } catch {
+    // 网络层就失败了（离线、DNS、隧道掐断）：同样是「问不出来」，不是「没登录」
+    backendDown.value = true
+    authed.value = false
+  } finally {
     authChecked.value = true
   }
   return authed.value
+}
+
+const BACKEND_DOWN_MSG = '数据库服务暂时不可用，请稍后重试'
+
+// 5xx = 服务端活着但下游（网关/数据库）不可达。原始串「Gateway BAD_RESPONSE; HTTP 530…」
+// 是给运维看的，直接甩给用户没意义；保留在控制台，界面上只说人话。
+function friendlyBackendError(r) {
+  if (r.status >= 500) {
+    backendDown.value = true
+    console.warn('[daohang] 后端不可用：', r.error)
+    r.error = BACKEND_DOWN_MSG
+  }
+  return r
 }
 
 async function postJSON(url, body) {
@@ -192,8 +225,9 @@ export async function login(email, password) {
     authed.value = true
     userEmail.value = email.trim().toLowerCase()
     isAdmin.value = !!r.data?.isAdmin
+    backendDown.value = false
   }
-  return r
+  return friendlyBackendError(r)
 }
 
 export async function register(email, password) {
@@ -202,8 +236,9 @@ export async function register(email, password) {
     authed.value = true
     userEmail.value = email.trim().toLowerCase()
     isAdmin.value = !!r.data?.isAdmin
+    backendDown.value = false
   }
-  return r
+  return friendlyBackendError(r)
 }
 
 export async function logout() {
@@ -259,7 +294,7 @@ export async function forgotPassword(email) {
       body: JSON.stringify({ email }),
     })
     const d = await res.json().catch(() => ({}))
-    return { ok: res.ok && d.ok !== false, error: d.error || '', message: d.message || '' }
+    return friendlyBackendError({ ok: res.ok && d.ok !== false, error: d.error || '', message: d.message || '', status: res.status })
   } catch { return { ok: false, error: '网络异常，请稍后再试', message: '' } }
 }
 
@@ -271,7 +306,7 @@ export async function resetPassword(email, code, newPassword) {
       body: JSON.stringify({ email, code, newPassword }),
     })
     const d = await res.json().catch(() => ({}))
-    return { ok: res.ok && d.ok !== false, error: d.error || '', message: d.message || '' }
+    return friendlyBackendError({ ok: res.ok && d.ok !== false, error: d.error || '', message: d.message || '', status: res.status })
   } catch { return { ok: false, error: '网络异常，请稍后再试', message: '' } }
 }
 

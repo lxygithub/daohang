@@ -671,6 +671,45 @@ html[data-theme="light"] .card-icon.icon-text-mode {
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+.state-wrap .state-hint {
+  max-width: 28rem;
+  font-size: 0.84rem;
+  line-height: 1.75;
+  color: var(--text-3);
+}
+
+/* ============================================================
+   离线只读态（后端/网关不可达，用本地缓存渲染）
+   ============================================================ */
+.offline-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 0 auto 4px;
+  padding: 7px 8px 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 0.84rem;
+  backdrop-filter: blur(10px);
+}
+/* 琥珀色：这不是报错，是「降级中」 */
+.offline-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f0b354;
+  box-shadow: 0 0 0 4px rgba(240, 179, 84, 0.14);
+}
+.offline-banner .offline-retry {
+  padding: 4px 10px;
+  font-size: 0.82rem;
+}
+.offline-banner .offline-retry:disabled { opacity: 0.6; pointer-events: none; }
 
 /* ============================================================
    Empty search hint

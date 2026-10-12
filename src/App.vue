@@ -20,7 +20,7 @@ import AccountModal from './components/AccountModal.vue'
 import AdminModal from './components/AdminModal.vue'
 import Toast from './components/Toast.vue'
 import {
-  authed, authChecked, checkAuth, pullAndMerge, logout as syncLogout,
+  authed, authChecked, backendDown, checkAuth, pullAndMerge, logout as syncLogout,
   bindPrefEvents,
 } from './composables/sync'
 const buildTime = __BUILD_TIME__
@@ -28,8 +28,20 @@ const buildTime = __BUILD_TIME__
 const { config, loading, loadConfig, saveConfig } = useConfig()
 const { message: toastMessage, visible: toastVisible, showToast } = useToast()
 
+// 离线只读态：后端（网关 → 家里的数据库）不可达，而本地还留着上次缓存的配置。
+// 这时「未登录」只是问不出来答案时的默认值，不该把用户挡在登录框外面，
+// 更不该 clearConfigCache() 把缓存删掉——直接拿缓存渲染，写操作一律拦住。
+const offlineMode = computed(() => authChecked.value && backendDown.value && !authed.value)
+const retrying = ref(false)
+
 watch(authed, loggedIn => {
   if (loggedIn) return
+  // 后端不可用时 authed=false 只代表「未知」，不代表用户被登出：保留缓存、不弹登录框
+  if (backendDown.value) {
+    editMode.value = false
+    applyBackground()
+    return
+  }
   config.value = null
   editMode.value = false
   applyBackground()
@@ -369,6 +381,10 @@ function ensureVerified(callback) {
     callback()
     return
   }
+  if (offlineMode.value) {
+    showToast('数据库服务暂时不可用，本地缓存为只读')
+    return
+  }
   showToast('请先登录')
   showAuthModal.value = true
 }
@@ -429,6 +445,45 @@ async function doLogout() {
   showAuthModal.value = true
 }
 
+// ---- 离线只读态：手动重试 + 低频自动重试 ----
+// 只在「后端不可达」时跑：一次 /api/auth/me 探测（边缘直接回错误，很快），
+// 服务器恢复的那一刻把配置和偏好拉回来，并撤掉只读横幅。
+let offlineTimer = null
+const OFFLINE_RETRY_MS = 60_000
+
+function startOfflineRetry() {
+  if (offlineTimer) return
+  offlineTimer = setInterval(() => { retryBackend(true) }, OFFLINE_RETRY_MS)
+}
+
+function stopOfflineRetry() {
+  if (offlineTimer) { clearInterval(offlineTimer); offlineTimer = null }
+}
+
+async function retryBackend(silent = false) {
+  if (retrying.value) return
+  retrying.value = true
+  try {
+    if (await checkAuth()) {
+      await Promise.all([pullAndMerge(), loadConfig()])
+      applyBackground()
+      stopOfflineRetry()
+      showToast('已连接服务器，数据已同步')
+    } else if (backendDown.value) {
+      if (!silent) showToast('服务仍不可用，继续使用本地缓存')
+    } else {
+      // 服务端回来了、但会话确实失效了：这时候才该清缓存回登录框
+      stopOfflineRetry()
+      clearConfigCache()
+      config.value = null
+      showAuthModal.value = true
+      if (!silent) showToast('登录已过期，请重新登录')
+    }
+  } finally {
+    retrying.value = false
+  }
+}
+
 function openAccount() {
   showAccountModal.value = true
 }
@@ -445,6 +500,11 @@ async function onAccountDeleted() {
 
 async function syncNow() {
   if (syncingNow.value) return
+  if (offlineMode.value) {
+    // 离线时「同步」其实就是「试试服务器回来没有」，别回一句假的「已从云端同步」
+    await retryBackend()
+    return
+  }
   syncingNow.value = true
   try {
     await pullAndMerge()
@@ -631,6 +691,11 @@ onMounted(async () => {
         else if (act === 'add') openEditModal(-1)
       }
     } catch {}
+  } else if (offlineMode.value) {
+    // 网关不可达（数据库服务器停机 / 隧道断）：缓存就是全部数据，只读渲染，
+    // 顺手起一个低频重试——服务器一开机自己就恢复了，不用手动刷新。
+    loading.value = false
+    startOfflineRetry()
   } else {
     clearConfigCache()
     config.value = null
@@ -645,6 +710,7 @@ let clockTimer = null
 
 onUnmounted(() => {
   if (clockTimer) clearInterval(clockTimer)
+  stopOfflineRetry()
   window.removeEventListener('keydown', handleKeydown)
   window.removeEventListener('apply-background', applyBackground)
   window.removeEventListener('click', handleDocClick, true)
@@ -792,6 +858,16 @@ onUnmounted(() => {
       </form>
     </section>
 
+    <!-- 离线只读：后端不可达（网关 530 / 数据库停机）时，用上次缓存的配置渲染，
+         并明说这是本地数据、写操作不可用；服务器恢复后自动撤下。 -->
+    <div v-if="offlineMode && config" class="offline-banner">
+      <span class="offline-dot"></span>
+      <span>服务暂时不可用，正在使用本地缓存（只读）</span>
+      <button type="button" class="btn-text ghost offline-retry" :disabled="retrying" @click="retryBackend()">
+        {{ retrying ? '检测中…' : '重试连接' }}
+      </button>
+    </div>
+
     <!-- authed 初始为 false 只表示「还没问过服务端」，不能当成未登录来渲染。
          否则登录状态下刷新会先闪一下「请登录…」再跳回来（鉴权那趟网关往返 1～2s）。
          有本地缓存就直接出网格（缓存本来就是给首屏秒开用的），没缓存才转圈等鉴权。 -->
@@ -799,12 +875,28 @@ onUnmounted(() => {
       <div class="spinner"></div>
       <div>正在加载…</div>
     </div>
-    <div v-else-if="authChecked && !authed" class="state-wrap">
+    <!-- 后端不可达、且本机还没有缓存（缓存要成功登录浏览过才有）：
+         说清是什么坏了、什么时候能好，别让人以为是自己密码错了 -->
+    <div v-else-if="offlineMode && !config" class="state-wrap">
+      <div>数据库服务暂时不可用</div>
+      <div class="state-hint">
+        导航数据在家里那台服务器上（Cloudflare 隧道 → 网关 → PostgreSQL），
+        它现在没连上。本机还没有可用的本地缓存；服务器恢复后会自动加载，也可以点「重试」。
+      </div>
+      <button type="button" class="btn-text primary" :disabled="retrying" @click="retryBackend()">
+        {{ retrying ? '检测中…' : '重试' }}
+      </button>
+    </div>
+    <!-- 只筛「服务端明确说没登录」；离线只读态（有缓存）必须落到下面的网格 -->
+    <div v-else-if="authChecked && !authed && !offlineMode" class="state-wrap">
       <div>请登录后查看并同步你的导航数据</div>
       <button type="button" class="btn-text primary" @click="showAuthModal = true">登录 / 注册</button>
     </div>
     <div v-else-if="authChecked && !config" class="state-wrap">
       <div>加载失败，请刷新重试</div>
+      <button v-if="backendDown" type="button" class="btn-text primary" :disabled="retrying" @click="retryBackend()">
+        {{ retrying ? '检测中…' : '重试' }}
+      </button>
     </div>
     <NavGrid
       v-else
