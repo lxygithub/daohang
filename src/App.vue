@@ -875,14 +875,10 @@ onUnmounted(() => {
       <div class="spinner"></div>
       <div>正在加载…</div>
     </div>
-    <!-- 后端不可达、且本机还没有缓存（缓存要成功登录浏览过才有）：
-         说清是什么坏了、什么时候能好，别让人以为是自己密码错了 -->
+    <!-- 后端不可达、且本机还没有缓存（缓存要成功登录浏览过才有）：一句话说清，
+         别让人以为是自己密码错了，也别顺便科普链路 -->
     <div v-else-if="offlineMode && !config" class="state-wrap">
       <div>数据库服务暂时不可用</div>
-      <div class="state-hint">
-        导航数据在家里那台服务器上（Cloudflare 隧道 → 网关 → PostgreSQL），
-        它现在没连上。本机还没有可用的本地缓存；服务器恢复后会自动加载，也可以点「重试」。
-      </div>
       <button type="button" class="btn-text primary" :disabled="retrying" @click="retryBackend()">
         {{ retrying ? '检测中…' : '重试' }}
       </button>
