@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import { useToast } from './useToast'
-import { authed, backendDown, noteConfigSynced } from './sync'
+import { authed, backendDown, noteConfigSynced, timeoutSignal, isTimeout } from './sync'
 
 const config = ref(null)
 const loading = ref(true)
@@ -54,11 +54,13 @@ export function useConfig() {
     }
     let res
     try {
-      res = await fetch('/api/config')
-    } catch {
-      // 网络层失败：保留缓存（离线只读），不当作未登录
+      res = await fetch('/api/config', { signal: timeoutSignal() })
+    } catch (e) {
+      // 网络层失败/超时：保留缓存（离线只读），不当作未登录。
+      // 超时也算「后端不可用」——冷启动那一下能到 20s+，宁可进只读态也别把首屏钉在转圈上。
       backendDown.value = true
       loading.value = false
+      if (isTimeout(e)) console.warn('[daohang] 配置请求超时，转为离线只读')
       return false
     }
     try {
@@ -99,6 +101,7 @@ export function useConfig() {
         method: 'POST',
         body: JSON.stringify({ ...config.value }),
         headers: { 'Content-Type': 'application/json' },
+        signal: timeoutSignal(),
       })
       if (res.ok) {
         const d = await res.json().catch(() => ({}))
@@ -123,7 +126,7 @@ export function useConfig() {
     } catch (e) {
       console.error('Failed to save config:', e)
       backendDown.value = true
-      useToast().showToast('保存失败，请检查网络')
+      useToast().showToast(isTimeout(e) ? '保存超时，请稍后重试' : '保存失败，请检查网络')
     }
     return false
   }

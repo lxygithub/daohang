@@ -310,6 +310,13 @@ routes = [
 并每 60s 静默重试一次（也可点「重试连接」）；服务器一开机自动恢复。
 只有两种情况才会清缓存回登录框：**服务端明确回 401**（会话真失效），或用户主动登出。
 **新增「未登录」相关 UI 时，要同时判断 `authChecked` 和 `offlineMode`，别把后端不可达误当成未登录。**
+
+启动那几趟请求（`/api/auth/me`、`/api/user/prefs`、`/api/config`）都带 12s 客户端超时
+（`sync.js` 的 `timeoutSignal`），超时按「后端不可用」处理。原因是**冷启动**：Worker 开了
+Smart Placement，停机期间 isolate 被回收，刚恢复时首趟要重建 placement + 隧道 + 数据库连接池
+——2026-10-15 实测 `/api/auth/me` 有一趟 22.4s 才回、另一趟 21.6s 连 HTTP 响应都没有，而
+`loading` 只由 `loadConfig` 收尾，不设超时就把首屏无限钉在转圈上（编辑其它请求时照抄 `timeoutSignal`）。
+
 验证这段逻辑不必等服务器真的停机：本地 `npx wrangler dev --port 8788` 时 `/api/*` 因为网关拿不到授权
 本来就会回 500（同一形状），浏览器里刷新即可复现离线态。
 

@@ -32,6 +32,26 @@ export const isAdmin = ref(false)
 const LEDGER_KEY = 'nav_sync_t'   // { [syncKey]: epochMs } 本地最后修改时间台账
 const DEBOUNCE_MS = 1500
 
+// ---- 客户端超时 ----
+// 网关那趟子请求在 Worker 侧自己有 10s 上限，但**冷启动那一下能远超**：Worker 开了 Smart
+// Placement，服务器停机期间 isolate 被回收，刚恢复时首趟要重建 placement + 隧道 + 数据库
+// 连接池。2026-10-15 实测 /api/auth/me 有一趟 22.4s 才回、另一趟 21.6s 连 HTTP 响应都没有。
+// 前端这几趟启动请求原先不设超时，`loading` 只在 loadConfig 结束后才置 false，于是首屏会
+// 无限转圈（那次刷新赶上的就是这一下）。这里宽一档取 12s：超时按「后端不可用」处理 →
+// 有缓存直接出网格 + 离线标记，没缓存落到可点「重试」的空态。
+const CLIENT_TIMEOUT_MS = 12_000
+
+export function timeoutSignal(ms = CLIENT_TIMEOUT_MS) {
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') return AbortSignal.timeout(ms)
+  const c = new AbortController()   // 老浏览器兜底
+  setTimeout(() => c.abort(), ms)
+  return c.signal
+}
+
+export function isTimeout(e) {
+  return e?.name === 'TimeoutError' || e?.name === 'AbortError'
+}
+
 // syncKey → { ls: localStorage 键, event: 广播事件 }
 const KEYS = {
   layout:  { ls: 'nav_layout',         event: 'layout-changed' },
@@ -112,7 +132,7 @@ async function pushDirty() {
 export async function pullAndMerge() {
   if (!authed.value) return
   try {
-    const res = await fetch('/api/user/prefs')
+    const res = await fetch('/api/user/prefs', { signal: timeoutSignal() })
     if (res.status === 401) { authed.value = false; return }
     if (!res.ok) return
     const { data } = await res.json()
@@ -141,9 +161,14 @@ export async function pullAndMerge() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ entries: toPush }),
+        signal: timeoutSignal(),
       })
     }
-  } catch {}
+  } catch (e) {
+    // 超时/网络失败都只是「这次没同步上」：不阻断首屏（下面还有 loadConfig 要跑），
+    // 脏标记仍在台账里，下次改动或下次启动会重试。
+    if (isTimeout(e)) console.warn('[daohang] 偏好同步超时，稍后重试')
+  }
 }
 
 // ---- apply server value to local UI ----
@@ -167,7 +192,7 @@ function applyServer(key, raw) {
 
 export async function checkAuth() {
   try {
-    const res = await fetch('/api/auth/me')
+    const res = await fetch('/api/auth/me', { signal: timeoutSignal() })
     if (res.ok) {
       const d = await res.json()
       authed.value = !!d.ok
@@ -214,6 +239,7 @@ async function postJSON(url, body) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    signal: timeoutSignal(),
   })
   const d = await res.json().catch(() => ({}))
   return { ok: res.ok && d.ok !== false, error: d.error || '', status: res.status, data: d }
