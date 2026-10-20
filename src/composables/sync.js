@@ -223,13 +223,22 @@ export async function checkAuth() {
 
 const BACKEND_DOWN_MSG = '数据库服务暂时不可用，请稍后重试'
 
+// 从原始错误里抠出网关 requestId 的前 8 位，给用户一个能对上服务端日志的短标识。
+// 例：Gateway INTERNAL_ERROR; requestId=eb7b81f0-93d2-456c-a128-fc09d81c9788: 网关内部错误
+// 只有 5xx 才挂（正常登录失败/密码错是 403，不带这个后缀）。
+function shortTrace(raw) {
+  const m = /requestId=([0-9a-f-]{8,})/i.exec(String(raw || ''))
+  return m ? m[1].slice(0, 8) : ''
+}
+
 // 5xx = 服务端活着但下游（网关/数据库）不可达。原始串「Gateway BAD_RESPONSE; HTTP 530…」
 // 是给运维看的，直接甩给用户没意义；保留在控制台，界面上只说人话。
 function friendlyBackendError(r) {
   if (r.status >= 500) {
     backendDown.value = true
     console.warn('[daohang] 后端不可用：', r.error)
-    r.error = BACKEND_DOWN_MSG
+    const ref = shortTrace(r.error)
+    r.error = ref ? `${BACKEND_DOWN_MSG}（请求号 ${ref}）` : BACKEND_DOWN_MSG
   }
   return r
 }
