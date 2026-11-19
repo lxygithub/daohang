@@ -433,15 +433,11 @@ function handleGridChanged(e) {
 function handleDropReorder(e) {
   const { srcIndex, targetIndex } = e.detail
   ensureVerified(() => {
-    const targetSvc = props.services[targetIndex]
+    // 拖拽只调整排序，不改变站点分组归属（分组由编辑弹窗管理）。
+    // 首页默认视图是所有站点平铺，跨组站点相邻很常见；若按目标位置跟随分组，
+    // 一次单纯的排序就会把站点悄悄挪到别的组，导致分组丢失。
     const [item] = props.services.splice(srcIndex, 1)
     props.services.splice(targetIndex, 0, item)
-    // 跨组拖拽时跟随目标分组
-    if (hasGroups.value && targetSvc && (item.group || '') !== (targetSvc.group || '')) {
-      item.group = targetSvc.group
-      const g = (targetSvc.group || '').trim()
-      showToast(g ? `已移动到「${g}」` : '已移动到未分组')
-    }
     emit('reordered')
   })
 }
