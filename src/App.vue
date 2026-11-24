@@ -263,15 +263,26 @@ const showSuggestions = computed(() =>
   searchQuery.value.trim().length > 0
 )
 
-// 重新输入 → 允许再次弹出
-watch(searchQuery, () => { suggestDismissed.value = false })
+// 联想键盘导航：-1 = 未选中；末尾一项是「直达搜索」行
+const suggestIndex = ref(-1)
 
+// 重新输入 → 允许再次弹出，并清掉上一次的键盘选中
+watch(searchQuery, () => {
+  suggestDismissed.value = false
+  suggestIndex.value = -1
+})
+
+// 名称 / 分组 / 网址都能命中，输入域名片段也能联想出来
 const suggestionMatches = computed(() => {
   const q = searchQuery.value.trim().toLowerCase()
   if (!q || !config.value) return []
   return (config.value.services || [])
-    .filter(s => s.name.toLowerCase().includes(q) || (s.group || '').toLowerCase().includes(q))
-    .slice(0, 5)
+    .filter(s =>
+      (s.name || '').toLowerCase().includes(q) ||
+      (s.group || '').toLowerCase().includes(q) ||
+      (s.url || '').toLowerCase().includes(q)
+    )
+    .slice(0, 6)
 })
 
 function openServiceDirect(svc) {
@@ -283,6 +294,43 @@ function openServiceDirect(svc) {
 function applySuggestion() {
   handleSearchEnter()
   showEngineMenu.value = false
+}
+
+// 联想总条数：匹配站点 + 1 条「直达搜索」
+const suggestTotal = computed(() => suggestionMatches.value.length + 1)
+
+// 一键清空：清掉关键词、收起联想，并保留焦点方便立刻重输
+function clearSearch() {
+  searchQuery.value = ''
+  suggestDismissed.value = false
+  suggestIndex.value = -1
+  persistSearchQuery()
+  searchInputRef.value?.focus()
+}
+
+// 搜索框键盘：↑↓ 在联想项间移动，Enter 打开选中项（无选中走原有直达逻辑），Esc 收起
+function handleSearchKeydown(e) {
+  if (!showSuggestions.value) {
+    if (e.key === 'Enter') handleSearchEnter()
+    return
+  }
+  const last = suggestTotal.value - 1
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    suggestIndex.value = suggestIndex.value >= last ? 0 : suggestIndex.value + 1
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    suggestIndex.value = suggestIndex.value <= 0 ? last : suggestIndex.value - 1
+  } else if (e.key === 'Enter') {
+    e.preventDefault()
+    const svc = suggestIndex.value >= 0 ? suggestionMatches.value[suggestIndex.value] : null
+    if (svc) openServiceDirect(svc)
+    else handleSearchEnter()
+  } else if (e.key === 'Escape') {
+    e.preventDefault()
+    suggestDismissed.value = true
+    suggestIndex.value = -1
+  }
 }
 
 // Keyboard shortcuts: Ctrl/Cmd+F → fullscreen icon search; "/" focuses search
@@ -818,9 +866,22 @@ onUnmounted(() => {
           readonly
           @focus="e => e.target.removeAttribute('readonly')"
           @blur="e => !e.target.value && e.target.setAttribute('readonly', '')"
-          @keydown.enter="handleSearchEnter"
+          @keydown="handleSearchKeydown"
           @input="persistSearchQuery"
         >
+        <button
+          v-if="searchQuery"
+          type="button"
+          class="search-clear"
+          title="清空"
+          aria-label="清空搜索"
+          @click="clearSearch"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
         <button
           v-if="!searchPrefs.hideButton"
           type="button"
@@ -836,16 +897,24 @@ onUnmounted(() => {
         <transition name="menu-pop">
           <div v-if="showSuggestions" class="search-suggest">
             <button
-              v-for="svc in suggestionMatches"
+              v-for="(svc, si) in suggestionMatches"
               :key="svc.id"
               type="button"
               class="suggest-item"
+              :class="{ active: si === suggestIndex }"
               @mousedown.prevent="openServiceDirect(svc)"
+              @mouseenter="suggestIndex = si"
             >
               <span class="suggest-name">{{ svc.name }}</span>
               <span class="suggest-host">{{ svc.url }}</span>
             </button>
-            <button type="button" class="suggest-item search" @mousedown.prevent="applySuggestion">
+            <button
+              type="button"
+              class="suggest-item search"
+              :class="{ active: suggestIndex === suggestionMatches.length }"
+              @mousedown.prevent="applySuggestion"
+              @mouseenter="suggestIndex = suggestionMatches.length"
+            >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
                 <circle cx="11" cy="11" r="7"/>
                 <line x1="21" y1="21" x2="16.2" y2="16.2"/>

@@ -335,6 +335,26 @@ html[data-theme="light"] .hero-meta .festival { color: #d43e3e; }
   font-size: 1.3rem;
 }
 
+/* 清空按钮：有内容时才出现，放在输入框与搜索按钮之间 */
+.search-clear {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-3);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.search-clear:hover { background: rgba(255, 255, 255, 0.16); color: var(--text); }
+.search-clear svg { width: 15px; height: 15px; color: inherit; }
+html[data-theme="light"] .search-clear { background: rgba(15, 23, 42, 0.07); }
+html[data-theme="light"] .search-clear:hover { background: rgba(15, 23, 42, 0.13); }
+
 /* ============================================================
    Card grid
    ============================================================ */
@@ -1532,6 +1552,9 @@ html[data-theme="light"] .search-suggest {
   transition: background 0.15s, color 0.15s;
 }
 .suggest-item:hover { background: rgba(255, 255, 255, 0.07); color: var(--text); }
+/* 键盘 ↑↓ 选中的那一项：与 hover 同款高亮，鼠标移入也会同步 */
+.suggest-item.active { background: rgba(255, 255, 255, 0.1); color: var(--text); }
+html[data-theme="light"] .suggest-item.active { background: rgba(15, 23, 42, 0.07); }
 .suggest-item .suggest-name {
   color: var(--text);
   font-weight: 500;

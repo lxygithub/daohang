@@ -121,6 +121,12 @@ function open(svc) {
 function openFirst() {
   if (pageItems.value.length) open(pageItems.value[0])
 }
+// 清空关键词并聚焦，方便继续输入
+function clearQ() {
+  q.value = ''
+  page.value = 0
+  inputRef.value?.focus()
+}
 
 // ---- 文字图标着色（与 NavCard 同款确定性色相）----
 function hue(name) {
@@ -171,6 +177,11 @@ onUnmounted(() => window.removeEventListener('keydown', onGlobalKey))
           placeholder="搜索已添加的站点（名称 / 网址 / 分组）"
           @keydown.enter.prevent="openFirst"
         >
+        <button v-if="q" type="button" class="sm-clear" title="清空" aria-label="清空搜索" @click="clearQ">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
       </div>
       <div class="sm-subline" v-if="services.length">
         {{ q ? `匹配 ${filtered.length} 个站点` : `共 ${services.length} 个站点` }}
@@ -282,6 +293,24 @@ onUnmounted(() => window.removeEventListener('keydown', onGlobalKey))
   font-size: 16.5px;
 }
 .sm-search input::placeholder { color: inherit; opacity: 0.4; }
+
+.sm-clear {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  opacity: 0.7;
+  cursor: pointer;
+  transition: background 0.15s, opacity 0.15s;
+}
+.sm-clear:hover { opacity: 1; background: rgba(255, 255, 255, 0.16); }
+.sm-clear svg { width: 15px; height: 15px; }
 
 .sm-subline {
   flex-shrink: 0;
