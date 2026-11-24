@@ -1536,6 +1536,12 @@ html[data-theme="light"] .search-suggest {
   background: rgba(255, 255, 255, calc(0.78 * var(--sb-opacity, 1)));
   box-shadow: 0 14px 34px rgba(15, 23, 42, 0.14);
 }
+.suggest-group {
+  padding: 7px 12px 4px;
+  font-size: 0.72rem;
+  color: var(--text-3);
+  letter-spacing: 0.02em;
+}
 .suggest-item {
   display: flex;
   align-items: center;
@@ -1571,6 +1577,22 @@ html[data-theme="light"] .suggest-item.active { background: rgba(15, 23, 42, 0.0
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* 站点项左侧的首字方块 */
+.suggest-item .suggest-badge {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-2);
+  background: rgba(255, 255, 255, 0.1);
+}
+html[data-theme="light"] .suggest-item .suggest-badge { background: rgba(15, 23, 42, 0.08); }
+.suggest-item svg { width: 15px; height: 15px; flex: none; color: var(--text-3); }
 /* 「直接搜索」那一行做次要样式，别跟站点候选抢视觉重量 */
 .suggest-item.search { color: var(--text-3); }
 .suggest-item.search .suggest-name { color: var(--text-2); font-weight: 400; }

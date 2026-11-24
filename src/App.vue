@@ -253,7 +253,11 @@ const effectiveFilter = computed(() =>
   engine.value.id === 'local' ? searchQuery.value : ''
 )
 
-// Search suggestions: local matches + direct-search action
+// ---- Search suggestions：三类联想合并展示 ----
+//   mine  ：自己已添加的站点（本地同步命中）
+//   lib   ：内置站点库（/api/site-suggest，异步）
+//   word  ：搜索引擎补全词（/api/suggest，异步）
+//   search：兜底「用当前引擎搜索」
 // dismissed：用户按 Esc 或点了别处就收起来（之前只能清空输入才消失，等于关不掉）
 const suggestDismissed = ref(false)
 const showSuggestions = computed(() =>
@@ -263,14 +267,12 @@ const showSuggestions = computed(() =>
   searchQuery.value.trim().length > 0
 )
 
-// 联想键盘导航：-1 = 未选中；末尾一项是「直达搜索」行
-const suggestIndex = ref(-1)
-
-// 重新输入 → 允许再次弹出，并清掉上一次的键盘选中
-watch(searchQuery, () => {
-  suggestDismissed.value = false
-  suggestIndex.value = -1
-})
+const suggestIndex = ref(-1)        // 键盘选中项，按 suggestFlat 的下标
+const libraryMatches = ref([])      // 内置库站点
+const remoteWords = ref([])         // 搜索词补全
+const suggestLoading = ref(false)   // 异步联想是否在途
+let suggestTimer = null
+let suggestToken = 0                // 自增令牌：丢弃过期请求的结果
 
 // 名称 / 分组 / 网址都能命中，输入域名片段也能联想出来
 const suggestionMatches = computed(() => {
@@ -285,25 +287,147 @@ const suggestionMatches = computed(() => {
     .slice(0, 6)
 })
 
+// 关键词变化：重置选中 + 防抖拉取远程联想
+watch(searchQuery, (v) => {
+  suggestDismissed.value = false
+  suggestIndex.value = -1
+  scheduleRemoteSuggest(v)
+})
+
+function scheduleRemoteSuggest(v) {
+  clearTimeout(suggestTimer)
+  const q = String(v || '').trim()
+  const enabled = searchPrefs.value.suggestions && !searchPrefs.value.hidden
+  if (!enabled || q.length < 1) {
+    suggestToken++                 // 作废在途请求，避免旧结果回填
+    libraryMatches.value = []
+    remoteWords.value = []
+    suggestLoading.value = false
+    return
+  }
+  suggestLoading.value = true
+  suggestTimer = setTimeout(() => fetchRemoteSuggest(q), 260)
+}
+
+async function fetchRemoteSuggest(q) {
+  const token = ++suggestToken
+  const isCurrent = () => token === suggestToken && searchQuery.value.trim() === q
+
+  // 两个接口互不依赖，各自回来就各自更新：站点库走网关较慢，不该拖累搜索词
+  // 回填时清掉键盘选中——列表结构变了，旧下标可能指到别的条目
+  const wordsTask = fetch(`/api/suggest?q=${encodeURIComponent(q)}`)
+    .then(r => (r.ok ? r.json() : null))
+    .then(d => {
+      if (!isCurrent()) return
+      remoteWords.value = Array.isArray(d?.suggestions) ? d.suggestions : []
+      suggestIndex.value = -1
+    })
+    .catch(() => { if (isCurrent()) remoteWords.value = [] })
+
+  const libTask = fetch(`/api/site-suggest?q=${encodeURIComponent(q)}`)
+    .then(r => (r.ok ? r.json() : null))
+    .then(d => {
+      if (!isCurrent()) return
+      libraryMatches.value = Array.isArray(d?.library) ? d.library.slice(0, 6) : []
+      suggestIndex.value = -1
+    })
+    .catch(() => { if (isCurrent()) libraryMatches.value = [] })
+
+  await Promise.allSettled([wordsTask, libTask])
+  if (isCurrent()) suggestLoading.value = false
+}
+
+// 分组后的联想（渲染用）
+const suggestGroups = computed(() => {
+  const q = searchQuery.value.trim()
+  const groups = []
+
+  const mine = suggestionMatches.value
+  if (mine.length) {
+    groups.push({
+      key: 'mine',
+      label: '我的站点',
+      items: mine.map(s => ({ type: 'mine', key: 'm-' + s.id, title: s.name, sub: s.url, svc: s })),
+    })
+  }
+
+  // 站点库结果去掉与「我的站点」重复的（同 url 就不再出现一次）
+  const mineUrls = new Set(mine.map(s => s.url))
+  const lib = libraryMatches.value.filter(s => s && s.url && !mineUrls.has(s.url))
+  if (lib.length) {
+    groups.push({
+      key: 'lib',
+      label: '站点库',
+      items: lib.map(s => ({
+        type: 'lib', key: 'l-' + (s.id || s.url),
+        title: s.name || s.url, sub: s.url, url: s.url,
+      })),
+    })
+  }
+
+  if (remoteWords.value.length) {
+    groups.push({
+      key: 'word',
+      label: '搜索建议',
+      items: remoteWords.value.map(w => ({ type: 'word', key: 'w-' + w, title: w, word: w })),
+    })
+  }
+
+  groups.push({
+    key: 'search',
+    label: '',
+    items: [{ type: 'search', key: 'search', title: `使用 ${engine.value.name} 搜索「${q}」`, word: q }],
+  })
+  return groups
+})
+
+// 扁平化：键盘 ↑↓ 就按这个顺序走
+const suggestFlat = computed(() => suggestGroups.value.flatMap(g => g.items))
+const suggestTotal = computed(() => suggestFlat.value.length)
+
+const suggestionIndexOf = (item) => suggestFlat.value.indexOf(item)
+
 function openServiceDirect(svc) {
   searchQuery.value = ''
   persistSearchQuery()
   window.dispatchEvent(new CustomEvent('open-service-by-id', { detail: svc.id }))
 }
 
-function applySuggestion() {
-  handleSearchEnter()
-  showEngineMenu.value = false
+// 用当前引擎搜索一个词；本地引擎就把词填回输入框
+function searchWord(word) {
+  const q = String(word || '').trim()
+  if (!q) return
+  if (engine.value.id !== 'local' && engine.value.url) {
+    window.open(engine.value.url.replace('{q}', encodeURIComponent(q)), '_blank')
+  } else {
+    searchQuery.value = q
+    searchInputRef.value?.focus()
+  }
+  suggestDismissed.value = true
 }
 
-// 联想总条数：匹配站点 + 1 条「直达搜索」
-const suggestTotal = computed(() => suggestionMatches.value.length + 1)
+// 点击一条联想
+function runSuggestion(item) {
+  if (!item) return
+  if (item.type === 'mine') return openServiceDirect(item.svc)
+  if (item.type === 'lib') {
+    searchQuery.value = ''
+    suggestDismissed.value = true
+    window.open(item.url, '_blank')
+    return
+  }
+  if (item.type === 'word') return searchWord(item.word)
+  handleSearchEnter()
+}
 
 // 一键清空：清掉关键词、收起联想，并保留焦点方便立刻重输
 function clearSearch() {
   searchQuery.value = ''
   suggestDismissed.value = false
   suggestIndex.value = -1
+  libraryMatches.value = []
+  remoteWords.value = []
+  suggestToken++
   persistSearchQuery()
   searchInputRef.value?.focus()
 }
@@ -323,8 +447,8 @@ function handleSearchKeydown(e) {
     suggestIndex.value = suggestIndex.value <= 0 ? last : suggestIndex.value - 1
   } else if (e.key === 'Enter') {
     e.preventDefault()
-    const svc = suggestIndex.value >= 0 ? suggestionMatches.value[suggestIndex.value] : null
-    if (svc) openServiceDirect(svc)
+    const item = suggestIndex.value >= 0 ? suggestFlat.value[suggestIndex.value] : null
+    if (item) runSuggestion(item)
     else handleSearchEnter()
   } else if (e.key === 'Escape') {
     e.preventDefault()
@@ -757,6 +881,7 @@ onMounted(async () => {
 let clockTimer = null
 
 onUnmounted(() => {
+  clearTimeout(suggestTimer)
   if (clockTimer) clearInterval(clockTimer)
   stopOfflineRetry()
   window.removeEventListener('keydown', handleKeydown)
@@ -896,32 +1021,27 @@ onUnmounted(() => {
         </button>
         <transition name="menu-pop">
           <div v-if="showSuggestions" class="search-suggest">
-            <button
-              v-for="(svc, si) in suggestionMatches"
-              :key="svc.id"
-              type="button"
-              class="suggest-item"
-              :class="{ active: si === suggestIndex }"
-              @mousedown.prevent="openServiceDirect(svc)"
-              @mouseenter="suggestIndex = si"
-            >
-              <span class="suggest-name">{{ svc.name }}</span>
-              <span class="suggest-host">{{ svc.url }}</span>
-            </button>
-            <button
-              type="button"
-              class="suggest-item search"
-              :class="{ active: suggestIndex === suggestionMatches.length }"
-              @mousedown.prevent="applySuggestion"
-              @mouseenter="suggestIndex = suggestionMatches.length"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-                <circle cx="11" cy="11" r="7"/>
-                <line x1="21" y1="21" x2="16.2" y2="16.2"/>
-              </svg>
-              <span class="suggest-name">使用 {{ engine.name }} 搜索「{{ searchQuery.trim() }}」</span>
-              <kbd class="suggest-key">↵</kbd>
-            </button>
+            <template v-for="g in suggestGroups" :key="g.key">
+              <div v-if="g.label" class="suggest-group">{{ g.label }}</div>
+              <button
+                v-for="item in g.items"
+                :key="item.key"
+                type="button"
+                class="suggest-item"
+                :class="[item.type, { active: suggestionIndexOf(item) === suggestIndex }]"
+                @mousedown.prevent="runSuggestion(item)"
+                @mouseenter="suggestIndex = suggestionIndexOf(item)"
+              >
+                <span v-if="item.type === 'mine' || item.type === 'lib'" class="suggest-badge">{{ (item.title || '?').charAt(0) }}</span>
+                <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                  <circle cx="11" cy="11" r="7"/>
+                  <line x1="21" y1="21" x2="16.2" y2="16.2"/>
+                </svg>
+                <span class="suggest-name">{{ item.title }}</span>
+                <span v-if="item.sub" class="suggest-host">{{ item.sub }}</span>
+                <kbd v-if="item.type === 'search'" class="suggest-key">↵</kbd>
+              </button>
+            </template>
           </div>
         </transition>
       </form>
