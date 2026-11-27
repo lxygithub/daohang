@@ -1272,6 +1272,45 @@ html[data-theme="light"] .card-icon.icon-text-mode {
   .gear-fab { opacity: 0.42; }
 }
 
+/* 右上角 ♥：收藏 / 取消收藏当前壁纸（紧贴齿轮左侧） */
+.fav-fab {
+  position: fixed;
+  right: 62px;
+  top: 18px;
+  z-index: 900;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text);
+  opacity: 0.35;
+  cursor: pointer;
+  transition: opacity 0.25s var(--ease), transform 0.2s var(--ease), background 0.25s;
+}
+.fav-fab svg { width: 18px; height: 18px; }
+.fav-fab:hover, .fav-fab:focus-visible {
+  opacity: 0.9;
+  background: var(--surface-hover);
+  transform: scale(1.12);
+  outline: none;
+}
+.fav-fab.active { opacity: 0.95; color: #ff6b81; }
+@media (hover: none) { .fav-fab { opacity: 0.6; } }
+@media (max-width: 640px) { .fav-fab { right: 52px; top: 12px; } }
+
+/* 设置抽屉里「我收藏的壁纸」入口 */
+.wp-fav-entry {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 10px;
+}
+.wp-fav-entry svg { width: 14px; height: 14px; }
+
 .fab-windmill {
   position: fixed;
   right: 26px;

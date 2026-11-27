@@ -14,6 +14,7 @@ import NavGrid from './components/NavGrid.vue'
 import EditModal from './components/EditModal.vue'
 import BuiltinModal from './components/BuiltinModal.vue'
 import SearchModal from './components/SearchModal.vue'
+import WallpaperFavoritesModal from './components/WallpaperFavoritesModal.vue'
 import SettingsModal from './components/SettingsModal.vue'
 import AuthModal from './components/AuthModal.vue'
 import AccountModal from './components/AccountModal.vue'
@@ -543,7 +544,8 @@ function handleDocClick(e) {
     e.target.closest('.modal-overlay') ||
     e.target.closest('.settings-drawer') ||
     e.target.closest('.drawer-catch') ||
-    e.target.closest('.gear-fab')
+    e.target.closest('.gear-fab') ||
+    e.target.closest('.fav-fab')
   ) return
   editMode.value = false
 }
@@ -797,6 +799,64 @@ async function randomWallpaper() {
   } finally {
     fabLoading.value = false
   }
+}
+
+// ---- 壁纸收藏：存进 config，跟账号一起同步 ----
+const showFavWallpaperModal = ref(false)
+
+const currentWallpaperUrl = computed(() => {
+  const wp = config.value?.wallpaper
+  return wp && wp.type !== 'none' && typeof wp.value === 'string' && wp.value ? wp.value : ''
+})
+
+const wallpaperFavorites = computed(() => {
+  const list = config.value?.wallpaperFavorites
+  return Array.isArray(list) ? list : []
+})
+
+const isCurrentFavorite = computed(() => {
+  const url = currentWallpaperUrl.value
+  return !!url && wallpaperFavorites.value.some(f => f && f.url === url)
+})
+
+// 右上角 ♥：收藏当前壁纸；已收藏则再点取消
+function toggleFavoriteCurrent() {
+  const url = currentWallpaperUrl.value
+  if (!url) { showToast('当前没有壁纸可收藏，先设置一张吧'); return }
+  ensureVerified(() => {
+    const cfg = config.value
+    if (!cfg) return
+    const list = Array.isArray(cfg.wallpaperFavorites) ? cfg.wallpaperFavorites : []
+    const idx = list.findIndex(f => f && f.url === url)
+    if (idx >= 0) {
+      cfg.wallpaperFavorites = list.filter((_, i) => i !== idx)
+      showToast('已取消收藏')
+    } else {
+      // 新的排前面；上限 30 张，免得 base64 壁纸把配置撑大
+      cfg.wallpaperFavorites = [{ url, addedAt: Date.now() }, ...list].slice(0, 30)
+      showToast('已收藏当前壁纸')
+    }
+    saveConfig()
+  })
+}
+
+function applyFavorite(url) {
+  if (!url) return
+  ensureVerified(() => {
+    setWallpaper(url)
+    showToast('壁纸已应用')
+  })
+}
+
+function removeFavorite(url) {
+  ensureVerified(() => {
+    const cfg = config.value
+    if (!cfg) return
+    cfg.wallpaperFavorites = (Array.isArray(cfg.wallpaperFavorites) ? cfg.wallpaperFavorites : [])
+      .filter(f => f && f.url !== url)
+    saveConfig()
+    showToast('已取消收藏')
+  })
 }
 
 // Provide shared state to children
@@ -1109,7 +1169,21 @@ onUnmounted(() => {
     <img src="/windmill.svg" alt="" draggable="false">
   </button>
 
-  <!-- 右上角只剩一个淡化的齿轮：点一下直接开设置（其余动作都在设置抽屉里） -->
+  <!-- 右上角 ♥：收藏 / 取消收藏当前壁纸 -->
+  <button
+    v-if="config"
+    class="fav-fab"
+    :class="{ active: isCurrentFavorite }"
+    :title="isCurrentFavorite ? '取消收藏当前壁纸' : '收藏当前壁纸'"
+    :aria-label="isCurrentFavorite ? '取消收藏当前壁纸' : '收藏当前壁纸'"
+    @click.stop="toggleFavoriteCurrent"
+  >
+    <svg viewBox="0 0 24 24" :fill="isCurrentFavorite ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+    </svg>
+  </button>
+
+  <!-- 右上角淡化的齿轮：点一下直接开设置（其余动作都在设置抽屉里） -->
   <button
     v-if="config"
     class="gear-fab"
@@ -1146,6 +1220,15 @@ onUnmounted(() => {
     @close="showSearchModal = false"
   />
 
+  <WallpaperFavoritesModal
+    :visible="showFavWallpaperModal"
+    :favorites="wallpaperFavorites"
+    :current-url="currentWallpaperUrl"
+    @close="showFavWallpaperModal = false"
+    @apply="applyFavorite"
+    @remove="removeFavorite"
+  />
+
   <SettingsModal
     v-if="config"
     :visible="showSettingsModal"
@@ -1153,8 +1236,10 @@ onUnmounted(() => {
     :light="isLight"
     :syncing="syncingNow"
     :view="viewMode"
+    :favorite-count="wallpaperFavorites.length"
     @close="showSettingsModal = false"
     @saved="saveConfig"
+    @favorite-wallpapers="openFromSettings(() => { showFavWallpaperModal = true })"
     @add-site="openFromSettings(openAddModal)"
     @search-sites="openFromSettings(() => { showSearchModal = true })"
     @builtin-library="openFromSettings(() => { showBuiltinModal = true })"

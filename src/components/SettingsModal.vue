@@ -18,12 +18,13 @@ const props = defineProps({
   light: { type: Boolean, default: false },
   syncing: { type: Boolean, default: false },
   view: { type: String, default: 'grid' },
+  favoriteCount: { type: Number, default: 0 },
 })
 
 // 原先右上角那一排浮标的动作，现在全部由设置抽屉转发出去
 const emit = defineEmits([
   'close', 'saved',
-  'add-site', 'search-sites', 'builtin-library', 'toggle-theme', 'set-view',
+  'add-site', 'search-sites', 'builtin-library', 'favorite-wallpapers', 'toggle-theme', 'set-view',
   'login', 'account', 'admin', 'logout', 'sync',
 ])
 const ensureVerified = inject('ensureVerified')
@@ -650,6 +651,10 @@ function pickImport() {
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
             <span>内置导航</span><i>按分类挑选</i>
           </button>
+          <button class="quick-btn" @click="emit('favorite-wallpapers')">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+            <span>收藏壁纸</span><i>{{ favoriteCount }} 张</i>
+          </button>
           <button class="quick-btn" @click="emit('toggle-theme')">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="4"/>
@@ -953,6 +958,10 @@ function pickImport() {
           <button class="btn-text ghost" :disabled="wpUploading" @click="pickWallpaper">{{ wpUploading ? '上传中…' : '上传图片' }}</button>
           <button class="btn-text ghost" @click="clearWallpaper">清除壁纸</button>
         </div>
+        <button class="btn-text ghost wp-fav-entry" type="button" @click="emit('favorite-wallpapers')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          我收藏的壁纸（{{ favoriteCount }}）
+        </button>
         <div v-if="hasWallpaper" class="grid-setting">
           <label class="slider-row">
             <span>模糊度</span>
